@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2025 Craig Hamilton and Contributors.
+ * Licensed under either of
+ *  - Apache License, Version 2.0 <http://www.apache.org/licenses/LICENSE-2.0> OR
+ *  - MIT license <http://opensource.org/licenses/MIT>
+ *  at your option.
+ */
+
 pub mod errors;
 pub mod v2;
 
@@ -44,7 +52,11 @@ mod tests {
             );
         pin_mut!(node_children);
         while let Some(result_album_node) = node_children.next().await {
-            println!("Child Node: {:?}", result_album_node.unwrap());
+            let album_node = result_album_node.unwrap();
+            println!("Child Node: {:?}", album_node);
+            let album_info = album_node.album().await.unwrap();
+            println!("Child Album: {:?}", album_info);
+            break;
         }
     }
 }

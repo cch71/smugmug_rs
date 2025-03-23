@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2025 Craig Hamilton and Contributors.
+ * Licensed under either of
+ *  - Apache License, Version 2.0 <http://www.apache.org/licenses/LICENSE-2.0> OR
+ *  - MIT license <http://opensource.org/licenses/MIT>
+ *  at your option.
+ */
+
+use crate::v2::ApiErrorCodes;
+use num_enum::TryFromPrimitiveError;
 use std::io;
 use thiserror::Error;
 
@@ -19,14 +29,19 @@ pub enum SmugMugError {
     #[error("URL Parse error")]
     UrlParsing(#[from] url::ParseError),
 
-    // #[error("the data for key `{0}` is not available")]
-    // Redaction(String),
-    // #[error("invalid header (expected {expected:?}, found {found:?})")]
-    // InvalidHeader {
-    //     expected: String,
-    //     found: String,
-    // },
-    #[error("unknown data store error")]
-    Unknown,
+    #[error("This is not an album")]
+    NotAnAlbum(),
+
+    #[error("Expected response missing")]
+    ResponseMissing(),
+
+    #[error("API Response was error: {0}, msg: {1}")]
+    ApiResponse(u32, String),
+
+    #[error("API Response error code is invalid")]
+    ApiResponseCode(#[from] TryFromPrimitiveError<ApiErrorCodes>),
+
+    #[error("API Response is malformed")]
+    ApiResponseMalformed(),
 }
 
