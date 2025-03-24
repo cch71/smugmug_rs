@@ -41,7 +41,7 @@ pub enum SmugMugError {
     #[error("API Response error code is invalid")]
     ApiResponseCode(#[from] TryFromPrimitiveError<ApiErrorCodes>),
 
-    #[error("API Response is malformed")]
-    ApiResponseMalformed(),
+    #[error("API Response is malformed: {0:?}")]
+    ApiResponseMalformed(reqwest::Error),
 }
 

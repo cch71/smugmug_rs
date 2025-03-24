@@ -6,18 +6,15 @@
  *  at your option.
  */
 
-#![feature(async_stream)]
 
 use crate::errors::SmugMugError;
 use crate::v2::{ApiClient, API_ORIGIN};
 use async_stream::try_stream;
 use chrono::Utc;
 use const_format::formatcp;
-use futures::{
-    stream::StreamExt,
-    Stream,
-};
+use futures::Stream;
 use serde::Deserialize;
+use serde_json::json;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum_macros::{EnumString, IntoStaticStr};
@@ -25,7 +22,7 @@ use strum_macros::{EnumString, IntoStaticStr};
 // When retrieving pages this is the default records to retrieve
 const NUM_TO_GET: usize = 25;
 // String representation of default number of records to retrieve
-const NUM_TO_GET_STRING: &str = formatcp!("{}",NUM_TO_GET);
+const NUM_TO_GET_STRING: &str = formatcp!("{}", NUM_TO_GET);
 
 /// Example
 // /// ```rust
@@ -59,23 +56,25 @@ impl Client {
         }
     }
 
-
     /// Returns information for the user at the provided full url
     pub async fn user_from_url(&self, url: &str) -> Result<User, SmugMugError> {
         let params = vec![("_verbosity", "1")];
-        let mut user_info = self
+        self
             .api_client
             .get::<UserResponse>(url, Some(&params))
             .await?
-            .ok_or(SmugMugError::ResponseMissing())?
-            .user;
-        user_info.api_client = self.api_client.clone();
-        Ok(user_info)
+            .ok_or(SmugMugError::ResponseMissing())
+            .map(|mut v| {
+                v.user.api_client = self.api_client.clone();
+                v.user
+            })
     }
 
     /// Returns information for the specified user id
     pub async fn user_from_id(&self, user_id: &str) -> Result<User, SmugMugError> {
-        let req_url = url::Url::parse(API_ORIGIN)?.join("/api/v2/user")?.join(user_id)?;
+        let req_url = url::Url::parse(API_ORIGIN)?
+            .join("/api/v2/user")?
+            .join(user_id)?;
         self.user_from_url(req_url.as_str()).await
     }
 
@@ -86,12 +85,14 @@ impl Client {
     }
 }
 
-
 /// Holds information returned from the User API
 #[derive(Deserialize, Debug)]
 pub struct User {
     #[serde(skip)]
     api_client: Arc<ApiClient>,
+
+    #[serde(rename = "Uri")]
+    pub uri: String,
 
     #[serde(rename = "Name")]
     pub name: String,
@@ -119,14 +120,15 @@ impl User {
     pub async fn node(self) -> Result<Node, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?.join(self.uris.node.as_str())?;
         let params = vec![("_verbosity", "1")];
-        let mut node_info = self
+        self
             .api_client
             .get::<NodeResponse>(req_url.as_str(), Some(&params))
             .await?
-            .ok_or(SmugMugError::ResponseMissing())?
-            .node;
-        node_info.api_client = self.api_client.clone();
-        Ok(node_info)
+            .ok_or(SmugMugError::ResponseMissing())
+            .map(|mut v| {
+                v.node.api_client = self.api_client.clone();
+                v.node
+            })
     }
 }
 
@@ -135,17 +137,17 @@ struct UserUris {
     #[serde(rename = "Node")]
     node: String,
 
-    #[serde(rename = "Features")]
-    features: String,
+    // #[serde(rename = "Features")]
+    // features: String,
 
-    #[serde(rename = "UserProfile")]
-    user_profile: String,
+    // #[serde(rename = "UserProfile")]
+    // user_profile: String,
 
-    #[serde(rename = "UserAlbums")]
-    user_albums: String,
+    // #[serde(rename = "UserAlbums")]
+    // user_albums: String,
 
-    #[serde(rename = "SiteSettings")]
-    site_settings: String,
+    // #[serde(rename = "SiteSettings")]
+    // site_settings: String,
 }
 
 /// Holds information returned from the Node API
@@ -154,6 +156,9 @@ pub struct Node {
     // Common to Node and Album types
     #[serde(skip)]
     api_client: Arc<ApiClient>,
+
+    #[serde(rename = "Uri")]
+    pub uri: String,
 
     #[serde(rename = "Name")]
     pub name: String,
@@ -171,10 +176,6 @@ pub struct Node {
     pub web_uri: String,
 
     // TODO: Use an ENUM
-    #[serde(rename = "WorldSearchable")]
-    pub is_world_searchable: String,
-
-    // TODO: Use an ENUM
     #[serde(rename = "SmugSearchable")]
     pub is_smug_searchable: String,
 
@@ -182,6 +183,10 @@ pub struct Node {
     pub privacy: PrivacyLevel,
 
     // Node Specific
+    // TODO: Use an ENUM
+    #[serde(rename = "WorldSearchable")]
+    pub is_world_searchable: String,
+
     #[serde(rename = "HasChildren")]
     pub has_children: bool,
 
@@ -208,15 +213,15 @@ impl Node {
         let req_url = url::Url::parse(API_ORIGIN)?.join(album_uri)?;
         let params = vec![("_verbosity", "1")];
 
-        println!("Album Req Url: {}", req_url.as_str());
-        let mut album_info = self
+        self
             .api_client
             .get::<AlbumResponse>(req_url.as_str(), Some(&params))
             .await?
-            .ok_or(SmugMugError::ResponseMissing())?
-            .album;
-        album_info.api_client = self.api_client.clone();
-        Ok(album_info)
+            .ok_or(SmugMugError::ResponseMissing())
+            .map(|mut v| {
+                v.album.api_client = self.api_client.clone();
+                v.album
+            })
     }
 
     /// Retrieves the Child Nodes information for this Node
@@ -226,12 +231,11 @@ impl Node {
         sort_direction: SortDirection,
         sort_method: SortMethod,
     ) -> impl Stream<Item=Result<Node, SmugMugError>> {
-
         // Build up the query parameters
         let mut params = vec![
             ("_verbosity", "1"),
             ("count", NUM_TO_GET_STRING),
-            ("SortDirection", sort_direction.into())
+            ("SortDirection", sort_direction.into()),
         ];
         match filter_by_type {
             NodeTypeFilters::Any => (),
@@ -244,11 +248,8 @@ impl Node {
         }
 
         // Page through and retrieve the nodes and return them as a stream.
-        let mut start_idx = 0;
         try_stream! {
-            let mut params = params.clone();
-            let start_idx_str = start_idx.to_string();
-            params.push(("start", start_idx_str.as_str()));
+            let mut start_idx = 0;
 
             let req_url = match self.uris.child_nodes.as_ref() {
                 Some(child_nodes) => url::Url::parse(API_ORIGIN)?.join(child_nodes.as_str())?,
@@ -256,6 +257,10 @@ impl Node {
             };
 
             loop {
+                let mut params = params.clone();
+                let start_idx_str = start_idx.to_string();
+                params.push(("start", start_idx_str.as_str()));
+
                 let nodes = self.api_client.get::<NodesResponse>(
                     req_url.as_str(), Some(&params)
                 ).await?
@@ -273,7 +278,6 @@ impl Node {
                     break;
                 }
                 start_idx += NUM_TO_GET;
-                break;
             }
         }
     }
@@ -285,21 +289,21 @@ struct NodeUris {
     #[serde(rename = "ChildNodes")]
     child_nodes: Option<String>,
 
-    #[serde(rename = "ParentNode")]
-    parent_node: Option<String>,
+    // #[serde(rename = "ParentNode")]
+    // parent_node: Option<String>,
 
-    #[serde(rename = "ParentNodes")]
-    parent_nodes: String,
+    // #[serde(rename = "ParentNodes")]
+    // parent_nodes: String,
 
-    #[serde(rename = "User")]
-    user: String,
+    // #[serde(rename = "User")]
+    // user: String,
 
     // Only present if node is an album type
     #[serde(rename = "Album")]
     album: Option<String>,
 
-    #[serde(rename = "HighlightImage")]
-    highlight_image: String,
+    // #[serde(rename = "HighlightImage")]
+    // highlight_image: String,
 }
 
 /// Holds information returned from the Album API
@@ -308,6 +312,9 @@ pub struct Album {
     // Common to Node and Album types
     #[serde(skip)]
     api_client: Arc<ApiClient>,
+
+    #[serde(rename = "Uri")]
+    pub uri: String,
 
     #[serde(rename = "Name")]
     pub name: String,
@@ -324,13 +331,18 @@ pub struct Album {
     #[serde(rename = "WebUri")]
     pub web_uri: String,
 
-    // TODO: Use an ENUM
     #[serde(rename = "WorldSearchable")]
     pub is_world_searchable: bool,
 
     // TODO: Use an ENUM
     #[serde(rename = "SmugSearchable")]
     pub is_smug_searchable: String,
+
+    #[serde(default, rename = "UploadKey", deserialize_with = "from_empty_str_to_none")]
+    pub upload_key: Option<String>,
+
+    #[serde(rename = "ImageCount")]
+    pub image_count: u64,
 
     #[serde(rename = "Privacy", deserialize_with = "from_privacy")]
     pub privacy: PrivacyLevel,
@@ -351,25 +363,21 @@ pub struct Album {
 
 impl Album {
     /// Retrieves information about the images for this Album
-    pub fn images(
-        &self,
-    ) -> impl Stream<Item=Result<Image, SmugMugError>> {
+    pub fn images(&self) -> impl Stream<Item=Result<Image, SmugMugError>> {
         // Build up the query parameters
-        let mut params = vec![
-            ("_verbosity", "1"),
-            ("count", NUM_TO_GET_STRING),
-        ];
+        let params = vec![("_verbosity", "1"), ("count", NUM_TO_GET_STRING)];
 
         // Page through and retrieve the nodes and return them as a stream.
-        let mut start_idx = 0;
         try_stream! {
-            let mut params = params.clone();
-            let start_idx_str = start_idx.to_string();
-            params.push(("start", start_idx_str.as_str()));
+            let mut start_idx = 0;
 
             let req_url = url::Url::parse(API_ORIGIN)?.join(self.uris.album_images.as_str())?;
 
             loop {
+                let mut params = params.clone();
+                let start_idx_str = start_idx.to_string();
+                params.push(("start", start_idx_str.as_str()));
+
                 let nodes = self.api_client.get::<AlbumImagesResponse>(
                     req_url.as_str(), Some(&params)
                 ).await?
@@ -390,6 +398,30 @@ impl Album {
             }
         }
     }
+
+    async fn update_upload_key(&self, data: Vec<u8>) -> Result<Album, SmugMugError> {
+        let params = vec![("_verbosity", "1")];
+        let req_url = url::Url::parse(API_ORIGIN)?.join(self.uri.as_str())?;
+        self.api_client.patch::<AlbumResponse>(req_url.as_str(), data, Some(&params))
+            .await?
+            .ok_or(SmugMugError::ResponseMissing())
+            .map(|mut v| {
+                v.album.api_client = self.api_client.clone();
+                v.album
+            })
+    }
+
+    /// Clear the upload key
+    pub async fn clear_upload_key(&self) -> Result<Album, SmugMugError> {
+        let data = serde_json::to_vec(&json!({"UploadKey": ""}))?;
+        self.update_upload_key(data).await
+    }
+
+    /// Set the upload key
+    pub async fn set_upload_key(&self, upload_key: &str) -> Result<Album, SmugMugError> {
+        let data = serde_json::to_vec(&json!({"UploadKey": upload_key}))?;
+        self.update_upload_key(data).await
+    }
 }
 
 // Uris returned for a Node
@@ -398,14 +430,14 @@ struct AlbumUris {
     #[serde(rename = "AlbumImages")]
     album_images: String,
 
-    #[serde(rename = "User")]
-    user: String,
+    // #[serde(rename = "User")]
+    // user: String,
 
-    #[serde(rename = "Node")]
-    node: Option<String>,
+    // #[serde(rename = "Node")]
+    // node: Option<String>,
 
-    #[serde(rename = "HighlightImage")]
-    highlight_image: String,
+    // #[serde(rename = "HighlightImage")]
+    // highlight_image: String,
 }
 
 /// Holds information returned from the AlbumImage/Image API
@@ -413,6 +445,9 @@ struct AlbumUris {
 pub struct Image {
     #[serde(skip)]
     api_client: Arc<ApiClient>,
+
+    #[serde(rename = "Uri")]
+    pub uri: String,
 
     #[serde(rename = "Title")]
     pub name: String,
@@ -509,7 +544,6 @@ pub enum NodeType {
     SystemPage,
 }
 
-
 // Expected response from a User request
 #[derive(Deserialize, Debug)]
 struct UserResponse {
@@ -561,4 +595,18 @@ where
 {
     let s: String = Deserialize::deserialize(deserializer)?;
     PrivacyLevel::from_str(&s).or(Ok(PrivacyLevel::Unknown))
+}
+
+// Parses strings that may be "" and sets to None
+fn from_empty_str_to_none
+<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    if s.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(s))
+    }
 }

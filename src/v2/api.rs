@@ -7,6 +7,7 @@
  */
 use crate::errors::SmugMugError;
 use num_enum::TryFromPrimitive;
+use reqwest::Response;
 use reqwest_oauth1::{OAuthClientProvider, SecretsProvider};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -57,6 +58,34 @@ impl ApiClient {
             .header("Accept", "application/json")
             .send()
             .await?;
+        self.handle_response(resp).await
+    }
+
+    /// Performs a patch request to the SmugMug API
+    pub async fn patch<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        data: Vec<u8>,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<Option<T>, SmugMugError> {
+        let req_url = params.map_or(reqwest::Url::parse(&url), |v| {
+            reqwest::Url::parse_with_params(&url, v)
+        })?;
+        let resp = self
+            .https_client
+            .clone()
+            .oauth1(self.creds.clone())
+            .patch(req_url)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .body(data)
+            .send()
+            .await?;
+        self.handle_response(resp).await
+    }
+
+    // Response handling logic
+    async fn handle_response<T: DeserializeOwned>(&self, resp: Response) -> Result<Option<T>, SmugMugError> {
         match resp.json::<ResponseBody<T>>().await {
             Ok(body) => {
                 if !body.is_code_an_error()? {
@@ -65,8 +94,7 @@ impl ApiClient {
                 Ok(body.response)
             }
             Err(err) => {
-                println!("Api Malformed Err {:?}", err);
-                Err(SmugMugError::ApiResponseMalformed())
+                Err(SmugMugError::ApiResponseMalformed(err))
             }
         }
         // println!("{}", serde_json::to_string_pretty(&resp)?);
@@ -89,7 +117,7 @@ pub type ApiParams<'a> = [(&'a str, &'a str)];
 #[derive(Debug, TryFromPrimitive)]
 #[repr(u32)]
 pub enum ApiErrorCodes {
-    // Good Codes
+    // Successful Codes
     Ok = 200,
     CreatedSuccessfully = 201,
     Accepted = 202,
