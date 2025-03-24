@@ -9,8 +9,6 @@
 pub mod errors;
 pub mod v2;
 
-// #![feature(async_stream)]
-
 #[cfg(test)]
 mod tests {
     use crate::v2::{Client, NodeTypeFilters, SortDirection, SortMethod};
@@ -70,7 +68,7 @@ mod tests {
                 break;
             }
             if cutoff_from_date_created_dt > album_info.date_created
-                || last_updated_cutoff_dt > album_info.images_last_updated
+                || last_updated_cutoff_dt > album_info.last_updated
             {
                 println!(
                     "Album to remove upload key Name: {} Image Count: {} {}",

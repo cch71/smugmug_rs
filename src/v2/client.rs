@@ -13,7 +13,7 @@ use async_stream::try_stream;
 use chrono::Utc;
 use const_format::formatcp;
 use futures::Stream;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -111,6 +111,9 @@ pub struct User {
 
     #[serde(rename = "TimeZone")]
     pub time_zone: String,
+
+    #[serde(rename = "WebUri")]
+    pub web_uri: String,
 
     #[serde(rename = "Uris")]
     uris: UserUris,
@@ -224,6 +227,26 @@ impl Node {
             })
     }
 
+    /// Creates album off this node
+    pub async fn create_album(&self, album_props: CreateAlbumProps) -> Result<Album, SmugMugError> {
+        let children_uri = self.uris.child_nodes.as_ref().unwrap(); //Should always be true right?
+        let req_url = url::Url::parse(API_ORIGIN)?.join(children_uri)?;
+        let params = vec![("_verbosity", "1")];
+
+        let data = serde_json::to_vec(&album_props)?;
+
+        self
+            .api_client
+            .post::<AlbumResponse>(req_url.as_str(), data, Some(&params))
+            .await?
+            .ok_or(SmugMugError::ResponseMissing())
+            .map(|mut v| {
+                v.album.api_client = self.api_client.clone();
+                v.album
+            })
+    }
+
+
     /// Retrieves the Child Nodes information for this Node
     pub fn children(
         &self,
@@ -315,6 +338,9 @@ pub struct Album {
 
     #[serde(rename = "Uri")]
     pub uri: String,
+
+    #[serde(rename = "AlbumKey")]
+    pub album_key: String,
 
     #[serde(rename = "Name")]
     pub name: String,
@@ -440,6 +466,43 @@ struct AlbumUris {
     // highlight_image: String,
 }
 
+/// Holds information returned from the Album API
+#[derive(Serialize, Default, Debug)]
+pub struct CreateAlbumProps {
+    #[serde(rename = "Name")]
+    pub name: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Description")]
+    pub description: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "PasswordHint")]
+    pub password_hint: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "UrlName")]
+    pub url_name: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "WebUri")]
+    pub web_uri: Option<String>,
+
+    // #[serde(rename = "WorldSearchable")]
+    // pub is_world_searchable: String,
+
+    // #[serde(rename = "SmugSearchable")]
+    // pub is_smug_searchable: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "UploadKey")]
+    pub upload_key: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Privacy")]
+    pub privacy: Option<PrivacyLevel>,
+}
+
 /// Holds information returned from the AlbumImage/Image API
 #[derive(Deserialize, Debug)]
 pub struct Image {
@@ -512,7 +575,7 @@ pub enum SortDirection {
     Descending,
 }
 
-#[derive(Debug, EnumString, IntoStaticStr)]
+#[derive(Debug, Serialize, EnumString, IntoStaticStr)]
 pub enum PrivacyLevel {
     Unknown,
     Public,

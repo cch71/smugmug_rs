@@ -84,6 +84,29 @@ impl ApiClient {
         self.handle_response(resp).await
     }
 
+    /// Performs a patch request to the SmugMug API
+    pub async fn post<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        data: Vec<u8>,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<Option<T>, SmugMugError> {
+        let req_url = params.map_or(reqwest::Url::parse(&url), |v| {
+            reqwest::Url::parse_with_params(&url, v)
+        })?;
+        let resp = self
+            .https_client
+            .clone()
+            .oauth1(self.creds.clone())
+            .post(req_url)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .body(data)
+            .send()
+            .await?;
+        self.handle_response(resp).await
+    }
+
     // Response handling logic
     async fn handle_response<T: DeserializeOwned>(&self, resp: Response) -> Result<Option<T>, SmugMugError> {
         match resp.json::<ResponseBody<T>>().await {

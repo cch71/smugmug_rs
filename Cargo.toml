@@ -8,7 +8,7 @@ reqwest-oauth1 = "0.3.0"
 reqwest = { version = "0.12.15", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
-const_format = "0"
+const_format = "0.2"
 thiserror = "1"
 url = "2"
 futures = "0.3"
