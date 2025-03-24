@@ -6,6 +6,7 @@
  *  at your option.
  */
 use crate::errors::SmugMugError;
+use const_format::formatcp;
 use num_enum::TryFromPrimitive;
 use reqwest::Response;
 use reqwest_oauth1::{OAuthClientProvider, SecretsProvider};
@@ -14,6 +15,12 @@ use serde::Deserialize;
 
 // Root SmugMug API
 pub const API_ORIGIN: &str = "https://api.smugmug.com";
+
+// When retrieving pages this is the default records to retrieve
+pub const NUM_TO_GET: usize = 25;
+
+// String representation of default number of records to retrieve
+pub const NUM_TO_GET_STRING: &'static str = formatcp!("{}", NUM_TO_GET);
 
 /// Directly communicates with the API.
 #[derive(Default, Clone)]
