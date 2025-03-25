@@ -5,16 +5,19 @@
  *  - MIT license <http://opensource.org/licenses/MIT>
  *  at your option.
  */
-use crate::v2::ApiClient;
+use crate::v2::Client;
 use chrono::Utc;
 use serde::Deserialize;
 use std::sync::Arc;
 
-/// Holds information returned from the AlbumImage/Image API
+/// Holds information returned from the AlbumImage/Image API.
+///
+/// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/image.html) for more
+/// details on the individual fields.
 #[derive(Deserialize, Debug)]
 pub struct Image {
     #[serde(skip)]
-    pub(crate) api_client: Arc<ApiClient>,
+    pub(crate) client: Arc<Client>,
 
     #[serde(rename = "Uri")]
     pub uri: String,

@@ -5,131 +5,228 @@
  *  - MIT license <http://opensource.org/licenses/MIT>
  *  at your option.
  */
-
-
-use crate::errors::SmugMugError;
-use crate::v2::user::User;
-use crate::v2::{ApiClient, API_ORIGIN};
-use serde::{Deserialize, Serialize};
+use crate::v2::errors::SmugMugError;
+use const_format::formatcp;
+use num_enum::TryFromPrimitive;
+use reqwest::Response;
+use reqwest_oauth1::{OAuthClientProvider, SecretsProvider};
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use std::sync::Arc;
-use strum_macros::{EnumString, IntoStaticStr};
 
+// Root SmugMug API
+pub(crate) const API_ORIGIN: &str = "https://api.smugmug.com";
 
-/// Example
-// /// ```rust
-// ///     use smugmug::SmugMug;
-// ///     let api_key = "".to_string();
-// ///     let api_secret = "".to_string();
-// ///     let token = "".to_string();
-// ///     let token_secret = "".to_string();
-// ///     let smugmug_client = SmugMug::new(&api_key, &api_secret, &token, &token_secret);
-// ///     smugmug_client.authenticated_user_info().await.unwrap();
-// /// ```
-#[derive(Debug, Clone)]
+// When retrieving pages this is the default records to retrieve
+pub(crate) const NUM_TO_GET: usize = 25;
+
+// String representation of default number of records to retrieve
+pub(crate) const NUM_TO_GET_STRING: &'static str = formatcp!("{}", NUM_TO_GET);
+
+/// Handles the lower level communication with the SmugMug REST API.
+#[derive(Default, Clone)]
 pub struct Client {
-    api_client: Arc<ApiClient>,
+    creds: Creds,
+    https_client: reqwest::Client,
 }
 
 impl Client {
+    /// Creates a new SmugMug client instance from the provided tokens
     pub fn new(
-        consumer_key: &str,
-        consumer_secret: &str,
+        consumer_api_key: &str,
+        consumer_api_secret: &str,
         access_token: &str,
         token_secret: &str,
-    ) -> Self {
-        Self {
-            api_client: Arc::new(ApiClient::new(
-                consumer_key,
-                consumer_secret,
-                access_token,
-                token_secret,
-            )),
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            creds: Creds {
+                consumer_api_key: consumer_api_key.into(),
+                consumer_api_secret: consumer_api_secret.into(),
+                access_token: access_token.into(),
+                token_secret: token_secret.into(),
+            },
+            https_client: reqwest::Client::new(),
+        })
+    }
+
+    /// Performs a GET request to the SmugMug API
+    pub async fn get<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<Option<T>, SmugMugError> {
+        let req_url = params.map_or(reqwest::Url::parse(&url), |v| {
+            reqwest::Url::parse_with_params(&url, v)
+        })?;
+        let resp = self
+            .https_client
+            .clone()
+            .oauth1(self.creds.clone())
+            .get(req_url)
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+        self.handle_response(resp).await
+    }
+
+    /// Performs a PATCH request to the SmugMug API
+    pub async fn patch<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        data: Vec<u8>,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<Option<T>, SmugMugError> {
+        let req_url = params.map_or(reqwest::Url::parse(&url), |v| {
+            reqwest::Url::parse_with_params(&url, v)
+        })?;
+        let resp = self
+            .https_client
+            .clone()
+            .oauth1(self.creds.clone())
+            .patch(req_url)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .body(data)
+            .send()
+            .await?;
+        self.handle_response(resp).await
+    }
+
+    /// Performs a POST request to the SmugMug API
+    pub async fn post<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        data: Vec<u8>,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<Option<T>, SmugMugError> {
+        let req_url = params.map_or(reqwest::Url::parse(&url), |v| {
+            reqwest::Url::parse_with_params(&url, v)
+        })?;
+        let resp = self
+            .https_client
+            .clone()
+            .oauth1(self.creds.clone())
+            .post(req_url)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .body(data)
+            .send()
+            .await?;
+        self.handle_response(resp).await
+    }
+
+    // Response handling logic
+    async fn handle_response<T: DeserializeOwned>(&self, resp: Response) -> Result<Option<T>, SmugMugError> {
+        match resp.json::<ResponseBody<T>>().await {
+            Ok(body) => {
+                if !body.is_code_an_error()? {
+                    return Err(SmugMugError::ApiResponse(body.code, body.message));
+                }
+                Ok(body.response)
+            }
+            Err(err) => {
+                Err(SmugMugError::ApiResponseMalformed(err))
+            }
+        }
+        // println!("{}", serde_json::to_string_pretty(&resp)?);
+        // let resp = serde_json::from_value::<T>(resp)?;
+    }
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ApiClient")
+            .finish()
+    }
+}
+
+
+/// This can be filter types as well as other parameters the specific API expects
+pub type ApiParams<'a> = [(&'a str, &'a str)];
+
+/// API Error codes per the SmugMug API site
+#[derive(Debug, TryFromPrimitive)]
+#[repr(u32)]
+pub enum ApiErrorCodes {
+    // Successful Codes
+    Ok = 200,
+    CreatedSuccessfully = 201,
+    Accepted = 202,
+    MovedPermanently = 301,
+    MovedTemporarily = 302,
+
+    // Failing Codes
+    BadRequest = 400,
+    Unauthorized = 401,
+    PaymentRequired = 402,
+    Forbidden = 403,
+    NotFound = 404,
+    MethodNotAllowed = 405,
+    BadAccept = 406,
+    Conflict = 407,
+    TooManyRequests = 429,
+    InternalServerError = 500,
+    ServiceUnavailable = 503,
+}
+
+#[derive(Default, Clone)]
+struct Creds {
+    consumer_api_key: String,
+    consumer_api_secret: String,
+    access_token: String,
+    token_secret: String,
+}
+
+impl std::fmt::Debug for Creds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Creds")
+            .field("consumer_api_key", &"xxx")
+            .field("consumer_api_secret", &"xxx")
+            .field("access_token", &"xxx")
+            .field("token_secret", &"xxx")
+            .finish()
+    }
+}
+
+// Internally this makes it easier to pass into reqwest for signing
+impl SecretsProvider for Creds {
+    fn get_consumer_key_pair<'a>(&'a self) -> (&'a str, &'a str) {
+        (
+            self.consumer_api_key.as_str(),
+            self.consumer_api_secret.as_str(),
+        )
+    }
+
+    fn get_token_pair_option<'a>(&'a self) -> Option<(&'a str, &'a str)> {
+        Some((self.access_token.as_str(), &self.token_secret))
+    }
+
+    fn get_token_option_pair<'a>(&'a self) -> (Option<&'a str>, Option<&'a str>) {
+        (Some(self.access_token.as_str()), Some(&self.token_secret))
+    }
+}
+
+// Base expected response body to be returned from the API
+#[derive(Deserialize, Debug)]
+struct ResponseBody<ResponseType> {
+    #[serde(rename = "Code")]
+    code: u32,
+
+    #[serde(rename = "Message")]
+    message: String,
+
+    #[serde(rename = "Response")]
+    response: Option<ResponseType>,
+}
+
+impl<ResponseType> ResponseBody<ResponseType> {
+    /// Determine if the code returned in the response body is an error based on SmugMug API Docs
+    fn is_code_an_error(&self) -> Result<bool, SmugMugError> {
+        use ApiErrorCodes as E;
+        match ApiErrorCodes::try_from(self.code)? {
+            E::Accepted | E::Ok | E::CreatedSuccessfully | E::MovedPermanently | E::MovedTemporarily => Ok(true),
+            _ => Ok(false),
         }
     }
-
-    /// Returns information for the user at the provided full url
-    pub async fn user_from_url(&self, url: &str) -> Result<User, SmugMugError> {
-        let params = vec![("_verbosity", "1")];
-        self
-            .api_client
-            .get::<UserResponse>(url, Some(&params))
-            .await?
-            .ok_or(SmugMugError::ResponseMissing())
-            .map(|mut v| {
-                v.user.api_client = self.api_client.clone();
-                v.user
-            })
-    }
-
-    /// Returns information for the specified user id
-    pub async fn user_from_id(&self, user_id: &str) -> Result<User, SmugMugError> {
-        let req_url = url::Url::parse(API_ORIGIN)?
-            .join("/api/v2/user")?
-            .join(user_id)?;
-        self.user_from_url(req_url.as_str()).await
-    }
-
-    /// Returns information for the authenticated user
-    pub async fn authenticated_user_info(&self) -> Result<User, SmugMugError> {
-        let req_url = url::Url::parse(API_ORIGIN)?.join("/api/v2!authuser")?;
-        self.user_from_url(req_url.as_str()).await
-    }
 }
-
-
-#[derive(Debug, EnumString, IntoStaticStr)]
-pub enum SortMethod {
-    Organizer,
-    SortIndex,
-    Name,
-    DateAdded,
-    DateModified,
-}
-
-#[derive(Debug, EnumString, IntoStaticStr)]
-pub enum SortDirection {
-    Ascending,
-    Descending,
-}
-
-#[derive(Debug, Serialize, EnumString, IntoStaticStr)]
-pub enum PrivacyLevel {
-    Unknown,
-    Public,
-    Unlisted,
-    Private,
-}
-
-#[derive(Debug, EnumString, IntoStaticStr)]
-pub enum NodeTypeFilters {
-    Any,
-    Album,
-    Folder,
-    Page,
-    #[strum(to_string = "System Album")]
-    SystemAlbum,
-    #[strum(to_string = "Folder Album Page")]
-    FolderAlbumPage,
-}
-
-#[derive(Debug, EnumString, IntoStaticStr)]
-pub enum NodeType {
-    Unknown,
-    Album,
-    Folder,
-    Page,
-    #[strum(to_string = "System Folder")]
-    SystemFolder,
-    #[strum(to_string = "System Page")]
-    SystemPage,
-}
-
-// Expected response from a User request
-#[derive(Deserialize, Debug)]
-struct UserResponse {
-    #[serde(rename = "User")]
-    user: User,
-}
-
-
 

@@ -5,21 +5,24 @@
  *  - MIT license <http://opensource.org/licenses/MIT>
  *  at your option.
  */
-use crate::errors::SmugMugError;
+use crate::v2::errors::SmugMugError;
 use crate::v2::parsers::{from_node_type, from_privacy};
-use crate::v2::{Album, AlbumResponse, ApiClient, CreateAlbumProps, NodeType, NodeTypeFilters, PrivacyLevel, SortDirection, SortMethod, API_ORIGIN, NUM_TO_GET, NUM_TO_GET_STRING};
+use crate::v2::{Album, AlbumResponse, Client, CreateAlbumProps, NodeType, NodeTypeFilters, PrivacyLevel, SortDirection, SortMethod, API_ORIGIN, NUM_TO_GET, NUM_TO_GET_STRING};
 use async_stream::try_stream;
 use chrono::Utc;
 use futures::Stream;
 use serde::Deserialize;
 use std::sync::Arc;
 
-/// Holds information returned from the Node API
+/// Holds information returned from the Node API.
+///
+/// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/node.html) for more
+/// details on the individual fields.
 #[derive(Deserialize, Debug)]
 pub struct Node {
     // Common to Node and Album types
     #[serde(skip)]
-    pub(crate) api_client: Arc<ApiClient>,
+    pub(crate) client: Arc<Client>,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -71,21 +74,33 @@ pub struct Node {
 }
 
 impl Node {
+    /// Returns information for the node at the provided full url
+    pub async fn node_from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
+        let params = vec![("_verbosity", "1")];
+        client
+            .get::<NodeResponse>(url, Some(&params))
+            .await?
+            .ok_or(SmugMugError::ResponseMissing())
+            .map(|mut v| {
+                v.node.client = client;
+                v.node
+            })
+    }
+
+    /// Returns information for the specified node id
+    pub async fn node_from_id(client: Arc<Client>, node_id: &str) -> Result<Self, SmugMugError> {
+        let req_url = url::Url::parse(API_ORIGIN)?
+            .join("/api/v2/node")?
+            .join(node_id)?;
+        Self::node_from_url(client, req_url.as_str()).await
+    }
+
     /// Retrieves the Album specific information about this Node
     pub async fn album(&self) -> Result<Album, SmugMugError> {
         let album_uri = self.uris.album.as_ref().ok_or(SmugMugError::NotAnAlbum())?;
         let req_url = url::Url::parse(API_ORIGIN)?.join(album_uri)?;
-        let params = vec![("_verbosity", "1")];
 
-        self
-            .api_client
-            .get::<AlbumResponse>(req_url.as_str(), Some(&params))
-            .await?
-            .ok_or(SmugMugError::ResponseMissing())
-            .map(|mut v| {
-                v.album.api_client = self.api_client.clone();
-                v.album
-            })
+        Album::album_from_url(self.client.clone(), req_url.as_str()).await
     }
 
     /// Creates album off this node
@@ -97,12 +112,12 @@ impl Node {
         let data = serde_json::to_vec(&album_props)?;
 
         self
-            .api_client
+            .client
             .post::<AlbumResponse>(req_url.as_str(), data, Some(&params))
             .await?
             .ok_or(SmugMugError::ResponseMissing())
             .map(|mut v| {
-                v.album.api_client = self.api_client.clone();
+                v.album.client = self.client.clone();
                 v.album
             })
     }
@@ -145,7 +160,7 @@ impl Node {
                 let start_idx_str = start_idx.to_string();
                 params.push(("start", start_idx_str.as_str()));
 
-                let nodes = self.api_client.get::<NodesResponse>(
+                let nodes = self.client.get::<NodesResponse>(
                     req_url.as_str(), Some(&params)
                 ).await?
                 .ok_or(SmugMugError::ResponseMissing())?
@@ -154,7 +169,7 @@ impl Node {
                 let is_done = nodes.len() != NUM_TO_GET;
 
                 for mut node in nodes {
-                    node.api_client = self.api_client.clone();
+                    node.client = self.client.clone();
                     yield node
                 }
 
@@ -192,14 +207,14 @@ struct NodeUris {
 
 // Expected response from a Node request
 #[derive(Deserialize, Debug)]
-pub(crate) struct NodeResponse {
+struct NodeResponse {
     #[serde(rename = "Node")]
-    pub(crate) node: Node,
+    node: Node,
 }
 
 // Expected response from a Node Children request
 #[derive(Deserialize, Debug)]
-pub(crate) struct NodesResponse {
+struct NodesResponse {
     #[serde(rename = "Node")]
-    pub(crate) nodes: Vec<Node>,
+    nodes: Vec<Node>,
 }

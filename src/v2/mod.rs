@@ -7,16 +7,18 @@
  */
 
 pub mod client;
-pub mod api;
 mod parsers;
 pub mod user;
 pub mod node;
 pub mod album;
 pub mod image;
+pub mod properties;
+pub mod errors;
 
 pub use album::*;
-pub use api::*;
 pub use client::*;
+pub use errors::*;
 pub use image::*;
 pub use node::*;
+pub use properties::*;
 pub use user::*;

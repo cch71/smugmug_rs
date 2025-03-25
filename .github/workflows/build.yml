@@ -1,0 +1,91 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [ "main" ]
+  #   tags:
+  #     - '*'
+  # pull_request:
+  #   branches: [ "main" ]
+
+jobs:
+  test:
+    name: run-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run cargo test
+        run: cargo test --all-features
+
+  clippy_check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install required cargo
+        run: cargo install clippy-sarif sarif-fmt
+
+      - name: Run Clippy
+        run:
+          cargo clippy
+          --all-targets --all-features
+          --message-format=json | clippy-sarif | tee rust-clippy-results.sarif | sarif-fmt
+        continue-on-error: true
+
+      - name: Upload analysis results to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: rust-clippy-results.sarif
+          wait-for-processing: true
+#  publish:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v3
+#      - uses: actions/cache@v4
+#        with:
+#          path: |
+#            ~/.cargo/registry
+#            ~/.cargo/git
+#            target
+#          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+#
+#      - name: Set up Rust
+#        uses: actions-rs/toolchain@v1
+#        with:
+#          toolchain: stable
+#          override-rust-version: true
+#
+#      - name: Login to crates.io
+#        run: cargo login --token ${{ secrets.CRATES_IO_TOKEN }}
+#
+#      - name: Build crate
+#        run: cargo build --release
+#
+#      - name: Package crate
+#        run: cargo package --to ./target/
+#
+#      - name: Publish crate
+#        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}

@@ -3,6 +3,24 @@ name = "smugmug"
 version = "0.1.0"
 edition = "2024"
 
+authors = ["Craig Hamilton <chamilton@craigscreations.com>"]
+categories = ["development-tools"]
+description = "SmugMug APIv2 Client Library"
+documentation = "https://docs.rs/smugmug"
+include = [
+    "/Cargo.toml",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/README.md",
+    "/src/**",
+    "/tests/**",
+]
+keywords = ["photo", "smugmug"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cch71/smugmug_rs.git"
+readme = "README.md"
+
+
 [dependencies]
 reqwest-oauth1 = "0.3.0"
 reqwest = { version = "0.12.15", features = ["json"] }
