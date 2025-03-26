@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
         }
 
         // Check cutoffs
-        if cutoff_from_date_created_dt > album_info.date_created
+        if cutoff_from_date_created_dt > album_info.date_created.unwrap()
             || last_updated_cutoff_dt > album_info.last_updated
         {
             println!(

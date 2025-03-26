@@ -47,11 +47,11 @@ pub struct Album {
     pub web_uri: String,
 
     #[serde(rename = "WorldSearchable")]
-    pub is_world_searchable: bool,
+    pub is_world_searchable: Option<bool>,
 
     // TODO: Use an ENUM
     #[serde(rename = "SmugSearchable")]
-    pub is_smug_searchable: String,
+    pub is_smug_searchable: Option<String>,
 
     #[serde(default, rename = "UploadKey", deserialize_with = "from_empty_str_to_none")]
     pub upload_key: Option<String>,
@@ -59,12 +59,12 @@ pub struct Album {
     #[serde(rename = "ImageCount")]
     pub image_count: u64,
 
-    #[serde(rename = "Privacy", deserialize_with = "from_privacy")]
-    pub privacy: PrivacyLevel,
+    #[serde(default, rename = "Privacy", deserialize_with = "from_privacy")]
+    pub privacy: Option<PrivacyLevel>,
 
     // Album specific fields
     #[serde(rename = "Date")]
-    pub date_created: chrono::DateTime<Utc>,
+    pub date_created: Option<chrono::DateTime<Utc>>,
 
     #[serde(rename = "ImagesLastUpdated")]
     pub images_last_updated: chrono::DateTime<Utc>,
@@ -78,7 +78,7 @@ pub struct Album {
 
 impl Album {
     /// Returns information for the album at the provided full url
-    pub async fn album_from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
         let params = vec![("_verbosity", "1")];
         client
             .get::<AlbumResponse>(url, Some(&params))
@@ -91,11 +91,11 @@ impl Album {
     }
 
     /// Returns information for the specified album id
-    pub async fn album_from_id(client: Arc<Client>, node_id: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_id(client: Arc<Client>, node_id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
-            .join("/api/v2/album")?
+            .join("/api/v2/album/")?
             .join(node_id)?;
-        Self::album_from_url(client, req_url.as_str()).await
+        Self::from_url(client, req_url.as_str()).await
     }
 
     /// Retrieves information about the images associated with this Album

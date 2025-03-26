@@ -19,12 +19,12 @@ where
 }
 
 // Parses privacy type
-pub fn from_privacy<'de, D>(deserializer: D) -> Result<PrivacyLevel, D::Error>
+pub fn from_privacy<'de, D>(deserializer: D) -> Result<Option<PrivacyLevel>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let s: String = Deserialize::deserialize(deserializer)?;
-    PrivacyLevel::from_str(&s).or(Ok(PrivacyLevel::Unknown))
+    Ok(PrivacyLevel::from_str(&s).ok().or(Some(PrivacyLevel::Unknown)))
 }
 
 // Parses strings that may be "" and sets to None

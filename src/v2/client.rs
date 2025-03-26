@@ -121,7 +121,6 @@ impl Client {
 
     // Response handling logic
     async fn handle_response<T: DeserializeOwned>(&self, resp: Response) -> Result<Option<T>, SmugMugError> {
-        println!("Failing URL: {}", resp.url().as_str());
         match resp.json::<ResponseBody<T>>().await {
             Ok(body) => {
                 if !body.is_code_an_error()? {

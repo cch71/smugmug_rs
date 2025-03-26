@@ -44,15 +44,15 @@ pub struct Node {
 
     // TODO: Use an ENUM
     #[serde(rename = "SmugSearchable")]
-    pub is_smug_searchable: String,
+    pub is_smug_searchable: Option<String>,
 
-    #[serde(rename = "Privacy", deserialize_with = "from_privacy")]
-    pub privacy: PrivacyLevel,
+    #[serde(default, rename = "Privacy", deserialize_with = "from_privacy")]
+    pub privacy: Option<PrivacyLevel>,
 
     // Node Specific
     // TODO: Use an ENUM
     #[serde(rename = "WorldSearchable")]
-    pub is_world_searchable: String,
+    pub is_world_searchable: Option<String>,
 
     #[serde(rename = "HasChildren")]
     pub has_children: bool,
@@ -75,7 +75,7 @@ pub struct Node {
 
 impl Node {
     /// Returns information for the node at the provided full url
-    pub async fn node_from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
         let params = vec![("_verbosity", "1")];
         client
             .get::<NodeResponse>(url, Some(&params))
@@ -88,11 +88,11 @@ impl Node {
     }
 
     /// Returns information for the specified node id
-    pub async fn node_from_id(client: Arc<Client>, node_id: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_id(client: Arc<Client>, node_id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
-            .join("/api/v2/node")?
+            .join("/api/v2/node/")?
             .join(node_id)?;
-        Self::node_from_url(client, req_url.as_str()).await
+        Self::from_url(client, req_url.as_str()).await
     }
 
     /// Retrieves the Album specific information about this Node
@@ -100,7 +100,7 @@ impl Node {
         let album_uri = self.uris.album.as_ref().ok_or(SmugMugError::NotAnAlbum())?;
         let req_url = url::Url::parse(API_ORIGIN)?.join(album_uri)?;
 
-        Album::album_from_url(self.client.clone(), req_url.as_str()).await
+        Album::from_url(self.client.clone(), req_url.as_str()).await
     }
 
     /// Creates album off this node

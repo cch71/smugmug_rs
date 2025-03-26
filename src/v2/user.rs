@@ -49,7 +49,7 @@ pub struct User {
 
 impl User {
     /// Returns information for the user at the provided full url
-    pub async fn user_from_url(client: Arc<Client>, url: &str) -> Result<User, SmugMugError> {
+    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<User, SmugMugError> {
         let params = vec![("_verbosity", "1")];
         let client = client.clone();
         client
@@ -63,23 +63,22 @@ impl User {
     }
 
     /// Returns information for the specified user id
-    pub async fn user_from_id(client: Arc<Client>, user_id: &str) -> Result<User, SmugMugError> {
+    pub async fn from_id(client: Arc<Client>, user_id: &str) -> Result<User, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join("/api/v2/user/")?
             .join(user_id)?;
-        println!("!!!!!! {}", req_url.as_str());
-        Self::user_from_url(client, req_url.as_str()).await
+        Self::from_url(client, req_url.as_str()).await
     }
 
     /// Returns information for the authenticated user
     pub async fn authenticated_user_info(client: Arc<Client>) -> Result<User, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?.join("/api/v2!authuser")?;
-        Self::user_from_url(client, req_url.as_str()).await
+        Self::from_url(client, req_url.as_str()).await
     }
 
     pub async fn node(self) -> Result<Node, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?.join(self.uris.node.as_str())?;
-        Node::node_from_url(self.client, req_url.as_str()).await
+        Node::from_url(self.client, req_url.as_str()).await
     }
 }
 
