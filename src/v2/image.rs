@@ -59,16 +59,17 @@ pub struct Image {
     #[serde(rename = "LastUpdated")]
     pub last_updated: chrono::DateTime<Utc>,
 
-    #[serde(rename = "Uris")]
-    uris: ImageUris,
+    // #[serde(rename = "Uris")]
+    // uris: ImageUris,
 }
 
 // Uris returned for an Image/AlbumImage
-#[derive(Deserialize, Debug)]
-struct ImageUris {
-    #[serde(rename = "ImageSizeDetails")]
-    image_size_details: String,
-}
+// #[derive(Deserialize, Debug)]
+// struct ImageUris {
+//     #[serde(rename = "ImageSizeDetails")]
+//     image_size_details: String,
+// }
+
 // Expected response for a request to get an Album's images
 #[derive(Deserialize, Debug)]
 pub(crate) struct AlbumImagesResponse {

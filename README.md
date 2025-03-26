@@ -43,21 +43,33 @@ smugmug = "0.1.0"
 **You will need to acquire an API key/secret from SmugMug prior to using the API**
 
 ```rust
-use crate::v2::{Client, NodeTypeFilters, SortDirection, SortMethod, User, SmugMugError};
 use futures::{pin_mut, StreamExt};
+use smugmug::v2::{Album, Client, NodeTypeFilters, SortDirection, SortMethod, User};
 
-async fn iterate_albums() -> Result<(), SmugMugError> {
+async fn iterate_albums<Fut>(
+    api_key: &str,
+    api_secret: &str,
+    access_token: &str,
+    access_token_secret: &str,
+    album_op: impl Fn(Album) -> Fut,
+) -> Result<()>
+where
+    Fut: Future<Output=Result<bool>>,
+{
     // The API key/secret is obtained from your SmugMug account
-    // The Access Token/Secret is obtained via Oauth1 process external to this library
-    let client = Client::new(&api_key, &api_secret, &tokens.token, &tokens.secret);
+    // The Access Token/Secret is obtained via Oauth1 process external to this
+    let client = Client::new(Creds::from_tokens(
+        api_key,
+        api_secret,
+        Some(access_token),
+        Some(access_token_secret),
+    ));
 
     // Get information for the authenticated user
     let user_info = User::authenticated_user_info(client.clone()).await?;
-    println!("User info: {:?}", user_info);
 
     // Get information on the root node for this user
     let node_info = user_info.node().await?;
-    println!("{:?}", node_info);
 
     // Retrieve the Albums under the root node
     let node_children = node_info.children(
@@ -65,15 +77,20 @@ async fn iterate_albums() -> Result<(), SmugMugError> {
         SortDirection::Descending,
         SortMethod::Organizer,
     );
+
     // Iterate over the node children
     pin_mut!(node_children);
-    while let Some(Ok(album_node)) = node_children.next().await {
-        println!("Child Node: {:?}", album_node);
+    while let Some(Ok(child_album_node)) = node_children.next().await {
+        // Retrieve album specific information about this child node
+        let album_info = child_album_node.album().await?;
 
-        // Get Album infomation about this node
-        let album_info = album_node.album().await?;
-        println!("Child Album: {:?}", album_info);
+        // Do operation on album and stop stream if returns false
+        if !album_op(album_info).await? {
+            break;
+        }
     }
+
+    Ok(())
 }
 ```
 

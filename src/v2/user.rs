@@ -26,19 +26,19 @@ pub struct User {
     pub name: String,
 
     #[serde(rename = "FirstName")]
-    pub first_name: String,
+    pub first_name: Option<String>,
 
     #[serde(rename = "LastName")]
-    pub last_name: String,
+    pub last_name: Option<String>,
 
     #[serde(rename = "NickName")]
     pub nick_name: String,
 
     #[serde(rename = "Plan")]
-    pub plan: String,
+    pub plan: Option<String>,
 
     #[serde(rename = "TimeZone")]
-    pub time_zone: String,
+    pub time_zone: Option<String>,
 
     #[serde(rename = "WebUri")]
     pub web_uri: String,
@@ -65,8 +65,9 @@ impl User {
     /// Returns information for the specified user id
     pub async fn user_from_id(client: Arc<Client>, user_id: &str) -> Result<User, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
-            .join("/api/v2/user")?
+            .join("/api/v2/user/")?
             .join(user_id)?;
+        println!("!!!!!! {}", req_url.as_str());
         Self::user_from_url(client, req_url.as_str()).await
     }
 

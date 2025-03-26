@@ -31,22 +31,24 @@ pub struct Client {
 }
 
 impl Client {
-    /// Creates a new SmugMug client instance from the provided tokens
-    pub fn new(
-        consumer_api_key: &str,
-        consumer_api_secret: &str,
-        access_token: &str,
-        token_secret: &str,
-    ) -> Arc<Self> {
+    /// Creates a new SmugMug client instance from the provided credentials
+    pub fn new(creds: Creds) -> Arc<Self> {
         Arc::new(Self {
-            creds: Creds {
-                consumer_api_key: consumer_api_key.into(),
-                consumer_api_secret: consumer_api_secret.into(),
-                access_token: access_token.into(),
-                token_secret: token_secret.into(),
-            },
+            creds,
             https_client: reqwest::Client::new(),
         })
+    }
+
+    fn create_req(&self, url: &str, params: Option<&ApiParams<'_>>) -> Result<reqwest::Url, SmugMugError> {
+        let mut req_url = params.map_or(reqwest::Url::parse(&url), |v| {
+            reqwest::Url::parse_with_params(&url, v)
+        })?;
+
+        if self.creds.access_token.is_none() || self.creds.token_secret.is_none() {
+            req_url = reqwest::Url::parse_with_params(req_url.as_str(), [("APIKey", &self.creds.consumer_api_key)])?;
+        }
+
+        Ok(req_url)
     }
 
     /// Performs a GET request to the SmugMug API
@@ -55,17 +57,23 @@ impl Client {
         url: &str,
         params: Option<&ApiParams<'_>>,
     ) -> Result<Option<T>, SmugMugError> {
-        let req_url = params.map_or(reqwest::Url::parse(&url), |v| {
-            reqwest::Url::parse_with_params(&url, v)
-        })?;
-        let resp = self
-            .https_client
-            .clone()
-            .oauth1(self.creds.clone())
-            .get(req_url)
-            .header("Accept", "application/json")
-            .send()
-            .await?;
+        let req_url = self.create_req(url, params)?;
+
+        // If we are in read-only mode we have to do this a little different.  Since other functions
+        // require Oauth1 singing, this is only needed for get.
+        let resp = if self.creds.get_token_pair_option().is_some() {
+            self.https_client.clone().oauth1(self.creds.clone())
+                .get(req_url)
+                .header("Accept", "application/json")
+                .send()
+                .await?
+        } else {
+            self.https_client.clone()
+                .get(req_url)
+                .header("Accept", "application/json")
+                .send()
+                .await?
+        };
         self.handle_response(resp).await
     }
 
@@ -76,9 +84,7 @@ impl Client {
         data: Vec<u8>,
         params: Option<&ApiParams<'_>>,
     ) -> Result<Option<T>, SmugMugError> {
-        let req_url = params.map_or(reqwest::Url::parse(&url), |v| {
-            reqwest::Url::parse_with_params(&url, v)
-        })?;
+        let req_url = self.create_req(url, params)?;
         let resp = self
             .https_client
             .clone()
@@ -99,9 +105,7 @@ impl Client {
         data: Vec<u8>,
         params: Option<&ApiParams<'_>>,
     ) -> Result<Option<T>, SmugMugError> {
-        let req_url = params.map_or(reqwest::Url::parse(&url), |v| {
-            reqwest::Url::parse_with_params(&url, v)
-        })?;
+        let req_url = self.create_req(url, params)?;
         let resp = self
             .https_client
             .clone()
@@ -117,6 +121,7 @@ impl Client {
 
     // Response handling logic
     async fn handle_response<T: DeserializeOwned>(&self, resp: Response) -> Result<Option<T>, SmugMugError> {
+        println!("Failing URL: {}", resp.url().as_str());
         match resp.json::<ResponseBody<T>>().await {
             Ok(body) => {
                 if !body.is_code_an_error()? {
@@ -169,12 +174,29 @@ pub enum ApiErrorCodes {
     ServiceUnavailable = 503,
 }
 
+/// Holds credentials used for accessing/signing REST requests
 #[derive(Default, Clone)]
-struct Creds {
+pub struct Creds {
     consumer_api_key: String,
     consumer_api_secret: String,
-    access_token: String,
-    token_secret: String,
+    access_token: Option<String>,
+    token_secret: Option<String>,
+}
+
+impl Creds {
+    /// Creates credentials from the tokens
+    pub fn from_tokens(consumer_api_key: &str,
+                       consumer_api_secret: &str,
+                       access_token: Option<&str>,
+                       token_secret: Option<&str>) -> Self
+    {
+        Self {
+            consumer_api_key: consumer_api_key.into(),
+            consumer_api_secret: consumer_api_secret.into(),
+            access_token: access_token.map(|v| v.into()),
+            token_secret: token_secret.map(|v| v.into()),
+        }
+    }
 }
 
 impl std::fmt::Debug for Creds {
@@ -182,8 +204,8 @@ impl std::fmt::Debug for Creds {
         f.debug_struct("Creds")
             .field("consumer_api_key", &"xxx")
             .field("consumer_api_secret", &"xxx")
-            .field("access_token", &"xxx")
-            .field("token_secret", &"xxx")
+            .field("access_token", &self.access_token.as_ref().map_or("", |_| "xxx"))
+            .field("token_secret", &self.access_token.as_ref().map_or("", |_| "xxx"))
             .finish()
     }
 }
@@ -198,11 +220,11 @@ impl SecretsProvider for Creds {
     }
 
     fn get_token_pair_option<'a>(&'a self) -> Option<(&'a str, &'a str)> {
-        Some((self.access_token.as_str(), &self.token_secret))
+        self.access_token.as_deref().zip(self.token_secret.as_deref())
     }
 
     fn get_token_option_pair<'a>(&'a self) -> (Option<&'a str>, Option<&'a str>) {
-        (Some(self.access_token.as_str()), Some(&self.token_secret))
+        (self.access_token.as_deref(), self.token_secret.as_deref())
     }
 }
 
