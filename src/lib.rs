@@ -30,13 +30,6 @@
 //! *The [`v2::Client`] currently provides direct GET/PATCH/POST functionality to allow library usage
 //! for features that may not be implemented yet in the higher level interfaces*
 //!
-//! ## Installation
-//!
-//! ```toml
-//! [dependencies]
-//! smugmug = "0.1.0"
-//! ```
-//!
 //! ## Usage
 //!
 //! **You will need to acquire an API key/secret from SmugMug prior to using the API**
