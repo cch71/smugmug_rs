@@ -14,21 +14,21 @@
 //!
 //! ## Features
 //!
-//! - Basic user information (Read only)
-//! - Node information
-//!     - Can create an Album
-//!     - List children of a Node
-//! - Album information
-//!     - Can set upload key
-//!     - Can list the images contained in an Album
-//! - Image information
-//! - Lower level interface for handling the raw communication
+//! - Retrieve Basic user information (Read only).
+//! - Retrieve Node information.
+//!     - Can create an Album off the node.
+//!     - List children of a Node.
+//! - Retrieve Album information.
+//!     - Can set the upload key.
+//!     - Can list the images contained in an Album.
+//! - Retrieve Image information.
+//! - Lower level interface for handling more direct communication.
 //!
 //! *The SmugMug API uses OAuth1. This library handles the request signing.
 //! Getting the Access Token/Secret is left up to the consumer of this library*
 //!
-//! *If you want to use this library for more that is currently implemented, the
-//! [`v2::Client`] is a way to make request/responses in a more direct way*
+//! *The [`v2::Client`] currently provides direct GET/PATCH/POST functionality to allow library usage
+//! for features that may not be implemented yet in the higher level interfaces*
 //!
 //! ## Installation
 //!
@@ -56,10 +56,11 @@
 //!    Fut: Future<Output=anyhow::Result<bool>>,
 //!{
 //!    // The API key/secret is obtained from your SmugMug account
-//!    // The Access Token/Secret is obtained via Oauth1 process external to this
+//!    // The API key is the only required field for accessing public accounts
+//!    // The Access Token/Secret is obtained via the OAuth1 authentication process
 //!    let client = Client::new(Creds::from_tokens(
 //!         api_key,
-//!         api_secret,
+//!         Some(api_secret),
 //!         Some(access_token),
 //!         Some(access_token_secret),
 //!     ));

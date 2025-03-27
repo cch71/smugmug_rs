@@ -29,10 +29,11 @@ where
     Fut: Future<Output=Result<bool>>,
 {
     // The API key/secret is obtained from your SmugMug account
-    // The Access Token/Secret is obtained via Oauth1 process external to this
+    // The API key is the only required field for accessing public accounts
+    // The Access Token/Secret is obtained via the OAuth1 authentication process
     let client = Client::new(Creds::from_tokens(
         api_key,
-        api_secret,
+        Some(api_secret),
         Some(access_token),
         Some(access_token_secret),
     ));

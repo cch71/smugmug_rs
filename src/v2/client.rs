@@ -21,7 +21,7 @@ pub(crate) const API_ORIGIN: &str = "https://api.smugmug.com";
 pub(crate) const NUM_TO_GET: usize = 25;
 
 // String representation of default number of records to retrieve
-pub(crate) const NUM_TO_GET_STRING: &'static str = formatcp!("{}", NUM_TO_GET);
+pub(crate) const NUM_TO_GET_STRING: &str = formatcp!("{}", NUM_TO_GET);
 
 /// Handles the lower level communication with the SmugMug REST API.
 #[derive(Default, Clone)]
@@ -40,8 +40,8 @@ impl Client {
     }
 
     fn create_req(&self, url: &str, params: Option<&ApiParams<'_>>) -> Result<reqwest::Url, SmugMugError> {
-        let mut req_url = params.map_or(reqwest::Url::parse(&url), |v| {
-            reqwest::Url::parse_with_params(&url, v)
+        let mut req_url = params.map_or(reqwest::Url::parse(url), |v| {
+            reqwest::Url::parse_with_params(url, v)
         })?;
 
         if self.creds.access_token.is_none() || self.creds.token_secret.is_none() {
@@ -177,21 +177,22 @@ pub enum ApiErrorCodes {
 #[derive(Default, Clone)]
 pub struct Creds {
     consumer_api_key: String,
-    consumer_api_secret: String,
+    consumer_api_secret: Option<String>,
     access_token: Option<String>,
     token_secret: Option<String>,
 }
 
 impl Creds {
     /// Creates credentials from the tokens
+    /// Only the consumer_api_key is required for working with public SmugMug Accounts
     pub fn from_tokens(consumer_api_key: &str,
-                       consumer_api_secret: &str,
+                       consumer_api_secret: Option<&str>,
                        access_token: Option<&str>,
                        token_secret: Option<&str>) -> Self
     {
         Self {
             consumer_api_key: consumer_api_key.into(),
-            consumer_api_secret: consumer_api_secret.into(),
+            consumer_api_secret: consumer_api_secret.map(|v| v.into()),
             access_token: access_token.map(|v| v.into()),
             token_secret: token_secret.map(|v| v.into()),
         }
@@ -202,7 +203,7 @@ impl std::fmt::Debug for Creds {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Creds")
             .field("consumer_api_key", &"xxx")
-            .field("consumer_api_secret", &"xxx")
+            .field("consumer_api_secret", &self.consumer_api_secret.as_ref().map_or("", |_| "xxx"))
             .field("access_token", &self.access_token.as_ref().map_or("", |_| "xxx"))
             .field("token_secret", &self.access_token.as_ref().map_or("", |_| "xxx"))
             .finish()
@@ -211,18 +212,18 @@ impl std::fmt::Debug for Creds {
 
 // Internally this makes it easier to pass into reqwest for signing
 impl SecretsProvider for Creds {
-    fn get_consumer_key_pair<'a>(&'a self) -> (&'a str, &'a str) {
+    fn get_consumer_key_pair(&self) -> (&str, &str) {
         (
             self.consumer_api_key.as_str(),
-            self.consumer_api_secret.as_str(),
+            self.consumer_api_secret.as_deref().expect("`consumer_api_secret` is required"),
         )
     }
 
-    fn get_token_pair_option<'a>(&'a self) -> Option<(&'a str, &'a str)> {
+    fn get_token_pair_option(&self) -> Option<(&str, &str)> {
         self.access_token.as_deref().zip(self.token_secret.as_deref())
     }
 
-    fn get_token_option_pair<'a>(&'a self) -> (Option<&'a str>, Option<&'a str>) {
+    fn get_token_option_pair(&self) -> (Option<&str>, Option<&str>) {
         (self.access_token.as_deref(), self.token_secret.as_deref())
     }
 }

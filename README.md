@@ -1,5 +1,4 @@
-SmugMug APIv2 Client Library
-Parser for Rust source code
+SmugMug REST API Client Library
 ===========================
 
 [![GitHub Repo](https://img.shields.io/badge/github-cch71%2Fsmugmug-green?logo=github)](https://github.com/cch71/smugmug_rs.git)
@@ -8,28 +7,27 @@ Parser for Rust source code
 [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/cch71/smugmug_rs/build?logo=github)]()
 ![License](https://img.shields.io/crates/l/smugmug)
 
-This SmugMug library was created for working with the SmugMug APIv2 interface.
+This SmugMug library was created for working with the SmugMug API interface.
 For further details on the Rest API refer to: [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/index.html)
 
 ## Features
 
-- Basic user information (Read only)
-- Node information
-    - Can create an Album
-    - List children of a Node
-- Album information
-    - Can set upload key
-    - Can list the images contained in an Album
-- Image information
-- Lower level interface for handling the raw communication
+- Retrieve Basic user information (Read only).
+- Retrieve Node information.
+    - Can create an Album.
+    - List children of a Node.
+- Retrieve Album information.
+    - Can set the upload key.
+    - Can list the images contained in an Album.
+- Retrieve Image information.
+    - Does not currently provide a way to download an image.
+- Lower level interface for handling more direct communication.
 
 *The SmugMug API uses OAuth1. This library handles the request signing.
 Getting the Access Token/Secret is left up to the consumer of this library*
 
-*In future versions I will provide more functionality. If you want
-to use this library and the information/capability is not yet there then the
-[`smugmug::v2::Client`] is a way to make request/responses in a more
-direct way*
+The [`v2::Client`] currently provides direct GET/PATCH/POST functionality to allow library usage
+for features that may not be implemented yet in the higher level interfaces*
 
 ## Installation
 
@@ -57,10 +55,11 @@ where
     Fut: Future<Output=Result<bool>>,
 {
     // The API key/secret is obtained from your SmugMug account
-    // The Access Token/Secret is obtained via Oauth1 process external to this
+    // The API key is the only required field for accessing public accounts
+    // The Access Token/Secret is obtained via the OAuth1 authentication process
     let client = Client::new(Creds::from_tokens(
         api_key,
-        api_secret,
+        Some(api_secret),
         Some(access_token),
         Some(access_token_secret),
     ));
@@ -96,7 +95,7 @@ where
 
 ## License
 
-Licensed under either of <a href="LICENSE-APACHE">Apache License, Version
+Licensed under either of <a href="LICENSE-APACHE">Apache License Version
 2.0</a> or <a href="LICENSE-MIT">MIT license</a> at your option.
 
 ## Contributions

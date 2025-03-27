@@ -23,6 +23,8 @@ mod test {
         println!("User info: {:?}", user_info);
     }
 
+    // Disabling for ci/cd builds since I would need to get an access token/secret
+    #[ignore]
     #[tokio::test]
     async fn authenticated_user_info() {
         dotenv().ok();
@@ -53,7 +55,7 @@ mod test {
             let _ = node_result.unwrap();
             node_count += 1;
         }
-        assert!(node_info.has_children == true && node_count > 0);
+        assert!(node_info.has_children && node_count > 0);
     }
 
     #[tokio::test]

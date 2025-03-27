@@ -31,7 +31,7 @@ pub(crate) fn get_full_auth_tokens() -> anyhow::Result<smugmug::v2::Creds> {
 
     Ok(smugmug::v2::Creds::from_tokens(
         &api_key,
-        &api_secret,
+        Some(&api_secret),
         Some(&tokens.token),
         Some(&tokens.secret),
     ))
@@ -40,11 +40,10 @@ pub(crate) fn get_full_auth_tokens() -> anyhow::Result<smugmug::v2::Creds> {
 #[allow(dead_code)]
 pub(crate) fn get_read_only_auth_tokens() -> anyhow::Result<smugmug::v2::Creds> {
     let api_key = std::env::var("SMUGMUG_API_KEY")?;
-    let api_secret = std::env::var("SMUGMUG_API_SECRET")?;
 
     Ok(smugmug::v2::Creds::from_tokens(
         &api_key,
-        &api_secret,
+        None,
         None,
         None,
     ))
