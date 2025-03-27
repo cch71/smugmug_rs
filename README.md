@@ -2,8 +2,9 @@ SmugMug REST API Client Library
 ===========================
 
 [![GitHub Repo](https://img.shields.io/badge/github-cch71%2Fsmugmug-green?logo=github)](https://github.com/cch71/smugmug_rs.git)
-![docs.rs](https://img.shields.io/docsrs/smugmug?logo=docsdotrs&link=https%3A%2F%2Fcrates.io%2Fcrates%2Fsmugmug)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/cch71/smugmug_rs/.github%2Fworkflows%2Fbuild.yml?branch=main&logo=github&link=https%3A%2F%2Fgithub.com%2Fcch71%2Fsmugmug_rs%2Factions%2Fworkflows%2Fbuild.yml)
+[![Static Badge](https://img.shields.io/badge/crate.io-smugmug-blue?logo=rust)](https://crates.io/crates/smugmug)
+[![docs.rs](https://img.shields.io/docsrs/smugmug?logo=docsdotrs)](https://docs.rs/smugmug/latest/smugmug)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/cch71/smugmug_rs/.github/workflows/build.yml?branch=main&logo=github)](https://github.com/cch71/smugmug_rs/actions/workflows/build.yml)
 ![License](https://img.shields.io/crates/l/smugmug)
 
 This SmugMug library was created for working with the SmugMug API interface.
