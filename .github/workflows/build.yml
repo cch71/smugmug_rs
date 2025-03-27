@@ -12,6 +12,9 @@ on:
 jobs:
   test:
     name: run_tests
+    env:
+      SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_KEY }}
+      SMUGMUG_API_SECRET: ${{ secrets.SMUGMUG_API_SECRET }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
