@@ -8,7 +8,6 @@
 use crate::v2::errors::SmugMugError;
 use crate::v2::{API_ORIGIN, Client, Node};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 /// Holds information returned from the User API.
 ///
@@ -17,7 +16,7 @@ use std::sync::Arc;
 #[derive(Deserialize, Serialize, Debug)]
 pub struct User {
     #[serde(skip)]
-    pub(crate) client: Arc<Client>,
+    pub(crate) client: Client,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -49,7 +48,7 @@ pub struct User {
 
 impl User {
     /// Returns information for the user at the provided full url
-    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<User, SmugMugError> {
+    pub async fn from_url(client: Client, url: &str) -> Result<User, SmugMugError> {
         let params = vec![("_verbosity", "1")];
         let client = client.clone();
         client
@@ -64,7 +63,7 @@ impl User {
     }
 
     /// Returns information for the specified user id
-    pub async fn from_id(client: Arc<Client>, id: &str) -> Result<User, SmugMugError> {
+    pub async fn from_id(client: Client, id: &str) -> Result<User, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join("/api/v2/user/")?
             .join(id)?;
@@ -72,7 +71,7 @@ impl User {
     }
 
     /// Returns information for the authenticated user
-    pub async fn authenticated_user_info(client: Arc<Client>) -> Result<User, SmugMugError> {
+    pub async fn authenticated_user_info(client: Client) -> Result<User, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?.join("/api/v2!authuser")?;
         Self::from_url(client, req_url.as_str()).await
     }

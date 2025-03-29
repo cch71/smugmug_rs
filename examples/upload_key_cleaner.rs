@@ -11,7 +11,7 @@ extern crate smugmug;
 use anyhow::Result;
 use chrono::{Duration, Utc};
 use dotenvy::dotenv;
-use futures::{pin_mut, StreamExt};
+use futures::{StreamExt, pin_mut};
 use serde::Deserialize;
 use smugmug::v2::{Album, Client, Creds, NodeTypeFilters, SortDirection, SortMethod, User};
 use std::fs::File;
@@ -26,7 +26,7 @@ async fn iterate_albums<Fut>(
     album_op: impl Fn(Album) -> Fut,
 ) -> Result<()>
 where
-    Fut: Future<Output=Result<bool>>,
+    Fut: Future<Output = Result<bool>>,
 {
     // The API key/secret is obtained from your SmugMug account
     // The API key is the only required field for accessing public accounts
@@ -128,6 +128,6 @@ async fn main() -> Result<()> {
         &tokens.secret,
         cleaner,
     )
-        .await?;
+    .await?;
     Ok(())
 }

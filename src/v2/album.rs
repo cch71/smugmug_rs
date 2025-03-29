@@ -13,7 +13,6 @@ use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
 
 /// Holds information returned from the Album API.
 ///
@@ -23,7 +22,7 @@ use std::sync::Arc;
 pub struct Album {
     // Common to Node and Album types
     #[serde(skip)]
-    pub(crate) client: Arc<Client>,
+    pub(crate) client: Client,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -82,7 +81,7 @@ pub struct Album {
 
 impl Album {
     /// Returns information for the album at the provided full url
-    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_url(client: Client, url: &str) -> Result<Self, SmugMugError> {
         let params = vec![("_verbosity", "1")];
         client
             .get::<AlbumResponse>(url, Some(&params))
@@ -96,7 +95,7 @@ impl Album {
     }
 
     /// Returns information for the specified album id
-    pub async fn from_id(client: Arc<Client>, id: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_id(client: Client, id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join("/api/v2/album/")?
             .join(id)?;

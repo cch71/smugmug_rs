@@ -15,7 +15,6 @@ use async_stream::try_stream;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 /// Holds information returned from the Node API.
 ///
@@ -25,7 +24,7 @@ use std::sync::Arc;
 pub struct Node {
     // Common to Node and Album types
     #[serde(skip)]
-    pub(crate) client: Arc<Client>,
+    pub(crate) client: Client,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -78,7 +77,7 @@ pub struct Node {
 
 impl Node {
     /// Returns information for the node at the provided full url
-    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_url(client: Client, url: &str) -> Result<Self, SmugMugError> {
         let params = vec![("_verbosity", "1")];
         client
             .get::<NodeResponse>(url, Some(&params))
@@ -92,7 +91,7 @@ impl Node {
     }
 
     /// Returns information for the specified node id
-    pub async fn from_id(client: Arc<Client>, id: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_id(client: Client, id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join("/api/v2/node/")?
             .join(id)?;

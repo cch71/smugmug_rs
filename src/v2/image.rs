@@ -7,9 +7,9 @@
  */
 use crate::v2::errors::SmugMugError;
 use crate::v2::{API_ORIGIN, Client};
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 /// Holds information returned from the AlbumImage/Image API.
 ///
@@ -18,7 +18,7 @@ use std::sync::Arc;
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Image {
     #[serde(skip)]
-    pub(crate) client: Arc<Client>,
+    pub(crate) client: Client,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -43,6 +43,9 @@ pub struct Image {
 
     #[serde(rename = "FileName")]
     pub file_name: String,
+
+    #[serde(rename = "ImageKey")]
+    pub image_key: String,
 
     #[serde(rename = "KeywordArray")]
     pub keywords: Vec<String>,
@@ -78,7 +81,7 @@ pub struct Image {
 
 impl Image {
     /// Returns information for the image at the provided full url
-    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_url(client: Client, url: &str) -> Result<Self, SmugMugError> {
         let params = vec![("_verbosity", "1")];
         client
             .get::<ImageResponse>(url, Some(&params))
@@ -92,11 +95,27 @@ impl Image {
     }
 
     /// Returns information for the specified image id
-    pub async fn from_id(client: Arc<Client>, id: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_id(client: Client, id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join("/api/v2/image/")?
             .join(id)?;
         Self::from_url(client, req_url.as_str()).await
+    }
+
+    /// Retrieves the image data found at the archive uri
+    pub async fn get_archive(&self) -> Result<Bytes, SmugMugError> {
+        match self.archived_uri.as_ref() {
+            Some(archived_uri) => Ok(self
+                .client
+                .get_binary_data(archived_uri, None)
+                .await?
+                .payload
+                .unwrap()),
+            None => Err(SmugMugError::ImageArchiveNotFound(
+                self.file_name.clone(),
+                self.image_key.clone(),
+            )),
+        }
     }
 }
 

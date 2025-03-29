@@ -6,6 +6,7 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
+use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
 use const_format::formatcp;
 use num_enum::TryFromPrimitive;
@@ -27,40 +28,74 @@ pub(crate) const NUM_TO_GET_STRING: &str = formatcp!("{}", NUM_TO_GET);
 /// Handles the lower level communication with the SmugMug REST API.
 #[derive(Default, Clone)]
 pub struct Client {
-    creds: Creds,
-    https_client: reqwest::Client,
+    inner: Arc<ClientRef>,
 }
 
 impl Client {
     /// Creates a new SmugMug client instance from the provided credentials
-    pub fn new(creds: Creds) -> Arc<Self> {
-        Arc::new(Self {
-            creds,
-            https_client: reqwest::Client::new(),
-        })
-    }
-
-    fn create_req(
-        &self,
-        url: &str,
-        params: Option<&ApiParams<'_>>,
-    ) -> Result<reqwest::Url, SmugMugError> {
-        let mut req_url = params.map_or(reqwest::Url::parse(url), |v| {
-            reqwest::Url::parse_with_params(url, v)
-        })?;
-
-        if self.creds.access_token.is_none() || self.creds.token_secret.is_none() {
-            req_url = reqwest::Url::parse_with_params(
-                req_url.as_str(),
-                [("APIKey", &self.creds.consumer_api_key)],
-            )?;
+    pub fn new(creds: Creds) -> Self {
+        Self {
+            inner: Arc::new(ClientRef::new(creds)),
         }
-
-        Ok(req_url)
     }
 
     /// Performs a GET request to the SmugMug API
     pub async fn get<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<Response<T>, SmugMugError> {
+        self.inner.get::<T>(url, params).await
+    }
+
+    /// Performs a GET request for binary data to the SmugMug API
+    pub async fn get_binary_data(
+        &self,
+        url: &str,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<Response<Bytes>, SmugMugError> {
+        self.inner.get_binary_data(url, params).await
+    }
+
+    /// Performs a PATCH request to the SmugMug API
+    pub async fn patch<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        data: Vec<u8>,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<Response<T>, SmugMugError> {
+        self.inner.patch::<T>(url, data, params).await
+    }
+
+    /// Performs a POST request to the SmugMug API
+    pub async fn post<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        data: Vec<u8>,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<Response<T>, SmugMugError> {
+        self.inner.post::<T>(url, data, params).await
+    }
+}
+
+// Internal representation of the client
+#[derive(Default)]
+struct ClientRef {
+    creds: Creds,
+    https_client: reqwest::Client,
+}
+
+impl ClientRef {
+    // Creates a new SmugMug client instance from the provided credentials
+    fn new(creds: Creds) -> Self {
+        Self {
+            creds,
+            https_client: reqwest::Client::new(),
+        }
+    }
+
+    // Performs a GET request to the SmugMug API
+    async fn get<T: DeserializeOwned>(
         &self,
         url: &str,
         params: Option<&ApiParams<'_>>,
@@ -85,11 +120,48 @@ impl Client {
                 .send()
                 .await?
         };
-        self.handle_response(resp).await
+        self.handle_json_response(resp).await
     }
 
-    /// Performs a PATCH request to the SmugMug API
-    pub async fn patch<T: DeserializeOwned>(
+    // Performs a GET request for binary data to the SmugMug API
+    async fn get_binary_data(
+        &self,
+        url: &str,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<Response<Bytes>, SmugMugError> {
+        let req_url = self.create_req(url, params)?;
+
+        // If we are in read-only mode we have to do this a little different.  Since other functions
+        // require Oauth1 singing, this is only needed for get.
+        let resp = if self.creds.get_token_pair_option().is_some() {
+            self.https_client
+                .clone()
+                .oauth1(self.creds.clone())
+                .get(req_url)
+                .send()
+                .await?
+        } else {
+            self.https_client.clone().get(req_url).send().await?
+        };
+
+        // Get current rate limit values
+        let rate_limit = self.extract_rate_limits_from_response(&resp);
+
+        // Check if the http error code returned was an error
+        self.error_on_http_status(&resp)?;
+
+        // Pull out the payload
+        match resp.bytes().await {
+            Ok(body) => Ok(Response {
+                payload: Some(body),
+                rate_limit,
+            }),
+            Err(err) => Err(SmugMugError::ApiResponseMalformed(err)),
+        }
+    }
+
+    // Performs a PATCH request to the SmugMug API
+    async fn patch<T: DeserializeOwned>(
         &self,
         url: &str,
         data: Vec<u8>,
@@ -106,11 +178,11 @@ impl Client {
             .body(data)
             .send()
             .await?;
-        self.handle_response(resp).await
+        self.handle_json_response(resp).await
     }
 
-    /// Performs a POST request to the SmugMug API
-    pub async fn post<T: DeserializeOwned>(
+    // Performs a POST request to the SmugMug API
+    async fn post<T: DeserializeOwned>(
         &self,
         url: &str,
         data: Vec<u8>,
@@ -127,15 +199,11 @@ impl Client {
             .body(data)
             .send()
             .await?;
-        self.handle_response(resp).await
+        self.handle_json_response(resp).await
     }
 
-    // Response handling logic
-    async fn handle_response<T: DeserializeOwned>(
-        &self,
-        resp: ReqwestResponse,
-    ) -> Result<Response<T>, SmugMugError> {
-        // Parse the rate limit headers that are returned.
+    // Parse the rate limit headers that are returned.
+    fn extract_rate_limits_from_response(&self, resp: &ReqwestResponse) -> RateLimitWindow {
         let remaining_requests = resp
             .headers()
             .get("X-RateLimit-Remaining")
@@ -147,7 +215,14 @@ impl Client {
                     .and_then(|v| Utc.timestamp_opt(v, 0).latest())
             })
         });
+        RateLimitWindow {
+            remaining_requests,
+            current_window_reset_time,
+        }
+    }
 
+    // Returns an error on an http error
+    fn error_on_http_status(&self, resp: &ReqwestResponse) -> Result<(), SmugMugError> {
         let _ = resp.error_for_status_ref().map_err(|v| {
             let retry_after_opt = resp
                 .headers()
@@ -161,7 +236,21 @@ impl Client {
                 _ => SmugMugError::from(v),
             }
         })?;
+        Ok(())
+    }
 
+    // Response handling logic
+    async fn handle_json_response<T: DeserializeOwned>(
+        &self,
+        resp: ReqwestResponse,
+    ) -> Result<Response<T>, SmugMugError> {
+        // Get current rate limit values
+        let rate_limit = self.extract_rate_limits_from_response(&resp);
+
+        // Check if the http error code returned was an error
+        self.error_on_http_status(&resp)?;
+
+        // Pull out the payload
         match resp.json::<ResponseBody<T>>().await {
             Ok(body) => {
                 if !body.is_code_an_error()? {
@@ -169,14 +258,31 @@ impl Client {
                 }
                 Ok(Response {
                     payload: body.response,
-                    rate_limit: RateLimitWindow {
-                        remaining_requests,
-                        current_window_reset_time,
-                    },
+                    rate_limit,
                 })
             }
             Err(err) => Err(SmugMugError::ApiResponseMalformed(err)),
         }
+    }
+
+    // Creates the request with the given params
+    fn create_req(
+        &self,
+        url: &str,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<reqwest::Url, SmugMugError> {
+        let mut req_url = params.map_or(reqwest::Url::parse(url), |v| {
+            reqwest::Url::parse_with_params(url, v)
+        })?;
+
+        if self.creds.access_token.is_none() || self.creds.token_secret.is_none() {
+            req_url = reqwest::Url::parse_with_params(
+                req_url.as_str(),
+                [("APIKey", &self.creds.consumer_api_key)],
+            )?;
+        }
+
+        Ok(req_url)
     }
 }
 

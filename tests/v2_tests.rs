@@ -12,7 +12,9 @@ mod test {
     use crate::helpers;
     use dotenvy::dotenv;
     use futures::{StreamExt, pin_mut};
-    use smugmug::v2::{Album, Client, Image, Node, NodeTypeFilters, SortDirection, SortMethod, User};
+    use smugmug::v2::{
+        Album, Client, Image, Node, NodeTypeFilters, SortDirection, SortMethod, User,
+    };
 
     #[tokio::test]
     async fn user_from_id() {
@@ -83,7 +85,17 @@ mod test {
         let creds = helpers::get_read_only_auth_tokens().unwrap();
         let client = Client::new(creds);
         // Using CMAC example image id
-        let album_info = Image::from_id(client.clone(), "jPPKD2c").await.unwrap();
-        println!("Image info: {:?}", album_info);
+        let image_info = Image::from_id(client.clone(), "jPPKD2c").await.unwrap();
+        println!("Image info: {:?}", image_info);
+
+        // Download image and verify data is good
+        let image_md5sum = image_info.archived_md5.as_ref().unwrap();
+        let image_size = image_info.archived_size.unwrap();
+        let image_data = image_info.get_archive().await.unwrap();
+
+        assert_eq!(image_data.len(), image_size as usize);
+
+        let digest = md5::compute(image_data);
+        assert_eq!(&format!("{:x}", digest), image_md5sum);
     }
 }

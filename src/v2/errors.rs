@@ -32,6 +32,9 @@ pub enum SmugMugError {
     #[error("This is not an album")]
     NotAnAlbum(),
 
+    #[error("Image archive not found for: {0} image key:{1}")]
+    ImageArchiveNotFound(String, String),
+
     #[error("Expected response missing")]
     ResponseMissing(),
 
