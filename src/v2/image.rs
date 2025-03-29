@@ -8,14 +8,14 @@
 use crate::v2::errors::SmugMugError;
 use crate::v2::{API_ORIGIN, Client};
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Holds information returned from the AlbumImage/Image API.
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/image.html) for more
 /// details on the individual fields.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Image {
     #[serde(skip)]
     pub(crate) client: Arc<Client>,

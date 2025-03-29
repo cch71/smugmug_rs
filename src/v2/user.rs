@@ -7,14 +7,14 @@
  */
 use crate::v2::errors::SmugMugError;
 use crate::v2::{API_ORIGIN, Client, Node};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Holds information returned from the User API.
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/user.html) for more
 /// details on the individual fields.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct User {
     #[serde(skip)]
     pub(crate) client: Arc<Client>,
@@ -43,7 +43,7 @@ pub struct User {
     #[serde(rename = "WebUri")]
     pub web_uri: String,
 
-    #[serde(rename = "Uris")]
+    #[serde(skip_serializing, rename = "Uris")]
     uris: UserUris,
 }
 

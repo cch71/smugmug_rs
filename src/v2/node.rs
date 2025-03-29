@@ -14,14 +14,14 @@ use crate::v2::{
 use async_stream::try_stream;
 use chrono::{DateTime, Utc};
 use futures::Stream;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Holds information returned from the Node API.
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/node.html) for more
 /// details on the individual fields.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Node {
     // Common to Node and Album types
     #[serde(skip)]
@@ -72,7 +72,7 @@ pub struct Node {
     #[serde(rename = "DateModified")]
     pub date_modified: DateTime<Utc>,
 
-    #[serde(rename = "Uris")]
+    #[serde(skip_serializing, rename = "Uris")]
     uris: NodeUris,
 }
 

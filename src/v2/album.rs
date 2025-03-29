@@ -19,7 +19,7 @@ use std::sync::Arc;
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/album.html) for more
 /// details on the individual fields.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Album {
     // Common to Node and Album types
     #[serde(skip)]
@@ -76,7 +76,7 @@ pub struct Album {
     #[serde(rename = "LastUpdated")]
     pub last_updated: DateTime<Utc>,
 
-    #[serde(rename = "Uris")]
+    #[serde(skip_serializing, rename = "Uris")]
     uris: AlbumUris,
 }
 
