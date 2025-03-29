@@ -6,12 +6,13 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
+use chrono::{DateTime, TimeZone, Utc};
 use const_format::formatcp;
 use num_enum::TryFromPrimitive;
-use reqwest::Response;
+use reqwest::Response as ReqwestResponse;
 use reqwest_oauth1::{OAuthClientProvider, SecretsProvider};
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use std::sync::Arc;
 
 // Root SmugMug API
@@ -39,13 +40,20 @@ impl Client {
         })
     }
 
-    fn create_req(&self, url: &str, params: Option<&ApiParams<'_>>) -> Result<reqwest::Url, SmugMugError> {
+    fn create_req(
+        &self,
+        url: &str,
+        params: Option<&ApiParams<'_>>,
+    ) -> Result<reqwest::Url, SmugMugError> {
         let mut req_url = params.map_or(reqwest::Url::parse(url), |v| {
             reqwest::Url::parse_with_params(url, v)
         })?;
 
         if self.creds.access_token.is_none() || self.creds.token_secret.is_none() {
-            req_url = reqwest::Url::parse_with_params(req_url.as_str(), [("APIKey", &self.creds.consumer_api_key)])?;
+            req_url = reqwest::Url::parse_with_params(
+                req_url.as_str(),
+                [("APIKey", &self.creds.consumer_api_key)],
+            )?;
         }
 
         Ok(req_url)
@@ -56,19 +64,22 @@ impl Client {
         &self,
         url: &str,
         params: Option<&ApiParams<'_>>,
-    ) -> Result<Option<T>, SmugMugError> {
+    ) -> Result<Response<T>, SmugMugError> {
         let req_url = self.create_req(url, params)?;
 
         // If we are in read-only mode we have to do this a little different.  Since other functions
         // require Oauth1 singing, this is only needed for get.
         let resp = if self.creds.get_token_pair_option().is_some() {
-            self.https_client.clone().oauth1(self.creds.clone())
+            self.https_client
+                .clone()
+                .oauth1(self.creds.clone())
                 .get(req_url)
                 .header("Accept", "application/json")
                 .send()
                 .await?
         } else {
-            self.https_client.clone()
+            self.https_client
+                .clone()
                 .get(req_url)
                 .header("Accept", "application/json")
                 .send()
@@ -83,7 +94,7 @@ impl Client {
         url: &str,
         data: Vec<u8>,
         params: Option<&ApiParams<'_>>,
-    ) -> Result<Option<T>, SmugMugError> {
+    ) -> Result<Response<T>, SmugMugError> {
         let req_url = self.create_req(url, params)?;
         let resp = self
             .https_client
@@ -104,7 +115,7 @@ impl Client {
         url: &str,
         data: Vec<u8>,
         params: Option<&ApiParams<'_>>,
-    ) -> Result<Option<T>, SmugMugError> {
+    ) -> Result<Response<T>, SmugMugError> {
         let req_url = self.create_req(url, params)?;
         let resp = self
             .https_client
@@ -120,30 +131,60 @@ impl Client {
     }
 
     // Response handling logic
-    async fn handle_response<T: DeserializeOwned>(&self, resp: Response) -> Result<Option<T>, SmugMugError> {
+    async fn handle_response<T: DeserializeOwned>(
+        &self,
+        resp: ReqwestResponse,
+    ) -> Result<Response<T>, SmugMugError> {
+        // Parse the rate limit headers that are returned.
+        let remaining_requests = resp
+            .headers()
+            .get("X-RateLimit-Remaining")
+            .and_then(|v| v.to_str().map_or(None, |v| v.parse().ok()));
+        let current_window_reset_time = resp.headers().get("X-RateLimit-Reset").and_then(|v| {
+            v.to_str().map_or(None, |v| {
+                v.parse::<i64>()
+                    .ok()
+                    .and_then(|v| Utc.timestamp_opt(v, 0).latest())
+            })
+        });
+
+        let _ = resp.error_for_status_ref().map_err(|v| {
+            let retry_after_opt = resp
+                .headers()
+                .get("Retry-After")
+                .and_then(|v| v.to_str().map_or(None, |v| v.parse().ok()));
+
+            match retry_after_opt {
+                Some(retry_after) if resp.status().as_u16() == 429 => {
+                    SmugMugError::ApiResponseTooManyRequests(retry_after)
+                }
+                _ => SmugMugError::from(v),
+            }
+        })?;
+
         match resp.json::<ResponseBody<T>>().await {
             Ok(body) => {
                 if !body.is_code_an_error()? {
                     return Err(SmugMugError::ApiResponse(body.code, body.message));
                 }
-                Ok(body.response)
+                Ok(Response {
+                    payload: body.response,
+                    rate_limit: RateLimitWindow {
+                        remaining_requests,
+                        current_window_reset_time,
+                    },
+                })
             }
-            Err(err) => {
-                Err(SmugMugError::ApiResponseMalformed(err))
-            }
+            Err(err) => Err(SmugMugError::ApiResponseMalformed(err)),
         }
-        // println!("{}", serde_json::to_string_pretty(&resp)?);
-        // let resp = serde_json::from_value::<T>(resp)?;
     }
 }
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ApiClient")
-            .finish()
+        f.debug_struct("ApiClient").finish()
     }
 }
-
 
 /// This can be filter types as well as other parameters the specific API expects
 pub type ApiParams<'a> = [(&'a str, &'a str)];
@@ -172,6 +213,17 @@ pub enum ApiErrorCodes {
     InternalServerError = 500,
     ServiceUnavailable = 503,
 }
+/// The call rate limits returned from the REST API call.
+pub struct RateLimitWindow {
+    pub remaining_requests: Option<u64>,
+    pub current_window_reset_time: Option<DateTime<Utc>>,
+}
+
+/// Response returned by the client requests
+pub struct Response<T> {
+    pub payload: Option<T>,
+    pub rate_limit: RateLimitWindow,
+}
 
 /// Holds credentials used for accessing/signing REST requests
 #[derive(Default, Clone)]
@@ -185,11 +237,12 @@ pub struct Creds {
 impl Creds {
     /// Creates credentials from the tokens
     /// Only the consumer_api_key is required for working with public SmugMug Accounts
-    pub fn from_tokens(consumer_api_key: &str,
-                       consumer_api_secret: Option<&str>,
-                       access_token: Option<&str>,
-                       token_secret: Option<&str>) -> Self
-    {
+    pub fn from_tokens(
+        consumer_api_key: &str,
+        consumer_api_secret: Option<&str>,
+        access_token: Option<&str>,
+        token_secret: Option<&str>,
+    ) -> Self {
         Self {
             consumer_api_key: consumer_api_key.into(),
             consumer_api_secret: consumer_api_secret.map(|v| v.into()),
@@ -203,9 +256,18 @@ impl std::fmt::Debug for Creds {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Creds")
             .field("consumer_api_key", &"xxx")
-            .field("consumer_api_secret", &self.consumer_api_secret.as_ref().map_or("", |_| "xxx"))
-            .field("access_token", &self.access_token.as_ref().map_or("", |_| "xxx"))
-            .field("token_secret", &self.access_token.as_ref().map_or("", |_| "xxx"))
+            .field(
+                "consumer_api_secret",
+                &self.consumer_api_secret.as_ref().map_or("", |_| "xxx"),
+            )
+            .field(
+                "access_token",
+                &self.access_token.as_ref().map_or("", |_| "xxx"),
+            )
+            .field(
+                "token_secret",
+                &self.access_token.as_ref().map_or("", |_| "xxx"),
+            )
             .finish()
     }
 }
@@ -215,12 +277,16 @@ impl SecretsProvider for Creds {
     fn get_consumer_key_pair(&self) -> (&str, &str) {
         (
             self.consumer_api_key.as_str(),
-            self.consumer_api_secret.as_deref().expect("`consumer_api_secret` is required"),
+            self.consumer_api_secret
+                .as_deref()
+                .expect("`consumer_api_secret` is required"),
         )
     }
 
     fn get_token_pair_option(&self) -> Option<(&str, &str)> {
-        self.access_token.as_deref().zip(self.token_secret.as_deref())
+        self.access_token
+            .as_deref()
+            .zip(self.token_secret.as_deref())
     }
 
     fn get_token_option_pair(&self) -> (Option<&str>, Option<&str>) {
@@ -246,9 +312,12 @@ impl<ResponseType> ResponseBody<ResponseType> {
     fn is_code_an_error(&self) -> Result<bool, SmugMugError> {
         use ApiErrorCodes as E;
         match ApiErrorCodes::try_from(self.code)? {
-            E::Accepted | E::Ok | E::CreatedSuccessfully | E::MovedPermanently | E::MovedTemporarily => Ok(true),
+            E::Accepted
+            | E::Ok
+            | E::CreatedSuccessfully
+            | E::MovedPermanently
+            | E::MovedTemporarily => Ok(true),
             _ => Ok(false),
         }
     }
 }
-

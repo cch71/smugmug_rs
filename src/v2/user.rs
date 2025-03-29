@@ -6,7 +6,7 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
-use crate::v2::{Client, Node, API_ORIGIN};
+use crate::v2::{API_ORIGIN, Client, Node};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -55,6 +55,7 @@ impl User {
         client
             .get::<UserResponse>(url, Some(&params))
             .await?
+            .payload
             .ok_or(SmugMugError::ResponseMissing())
             .map(|mut v| {
                 v.user.client = client;
@@ -63,10 +64,10 @@ impl User {
     }
 
     /// Returns information for the specified user id
-    pub async fn from_id(client: Arc<Client>, user_id: &str) -> Result<User, SmugMugError> {
+    pub async fn from_id(client: Arc<Client>, id: &str) -> Result<User, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join("/api/v2/user/")?
-            .join(user_id)?;
+            .join(id)?;
         Self::from_url(client, req_url.as_str()).await
     }
 
@@ -86,7 +87,6 @@ impl User {
 struct UserUris {
     #[serde(rename = "Node")]
     node: String,
-
     // #[serde(rename = "Features")]
     // features: String,
 

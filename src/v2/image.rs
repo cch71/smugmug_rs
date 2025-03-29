@@ -5,8 +5,9 @@
  *  - MIT license <http://opensource.org/licenses/MIT>
  *  at your option.
  */
-use crate::v2::Client;
-use chrono::Utc;
+use crate::v2::errors::SmugMugError;
+use crate::v2::{API_ORIGIN, Client};
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -43,36 +44,65 @@ pub struct Image {
     #[serde(rename = "FileName")]
     pub file_name: String,
 
+    #[serde(rename = "KeywordArray")]
+    pub keywords: Vec<String>,
+
+    #[serde(rename = "ArchivedUri")]
+    pub archived_uri: Option<String>,
+
+    #[serde(rename = "ArchivedMD5")]
+    pub archived_md5: Option<String>,
+
+    #[serde(rename = "ArchivedSize")]
+    pub archived_size: Option<u64>,
+
+    #[serde(rename = "Processing")]
+    pub is_processing: bool,
+
     #[serde(rename = "IsVideo")]
     pub is_video: bool,
 
     #[serde(rename = "Hidden")]
     pub is_hidden: bool,
 
-    #[serde(rename = "Watermarked")]
+    #[serde(default, rename = "Watermarked")]
     pub is_watermarked: bool,
 
     // Album specific fields
     #[serde(rename = "DateTimeUploaded")]
-    pub date_created: chrono::DateTime<Utc>,
+    pub date_created: DateTime<Utc>,
 
     #[serde(rename = "LastUpdated")]
-    pub last_updated: chrono::DateTime<Utc>,
-
-    // #[serde(rename = "Uris")]
-    // uris: ImageUris,
+    pub last_updated: DateTime<Utc>,
 }
 
-// Uris returned for an Image/AlbumImage
-// #[derive(Deserialize, Debug)]
-// struct ImageUris {
-//     #[serde(rename = "ImageSizeDetails")]
-//     image_size_details: String,
-// }
+impl Image {
+    /// Returns information for the image at the provided full url
+    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
+        let params = vec![("_verbosity", "1")];
+        client
+            .get::<ImageResponse>(url, Some(&params))
+            .await?
+            .payload
+            .ok_or(SmugMugError::ResponseMissing())
+            .map(|mut v| {
+                v.image.client = client;
+                v.image
+            })
+    }
 
-// Expected response for a request to get an Album's images
+    /// Returns information for the specified image id
+    pub async fn from_id(client: Arc<Client>, id: &str) -> Result<Self, SmugMugError> {
+        let req_url = url::Url::parse(API_ORIGIN)?
+            .join("/api/v2/image/")?
+            .join(id)?;
+        Self::from_url(client, req_url.as_str()).await
+    }
+}
+
+// Expected response for a request to get an Image
 #[derive(Deserialize, Debug)]
-pub(crate) struct AlbumImagesResponse {
-    #[serde(rename = "AlbumImage")]
-    pub(crate) images: Vec<Image>,
+struct ImageResponse {
+    #[serde(rename = "Image")]
+    image: Image,
 }

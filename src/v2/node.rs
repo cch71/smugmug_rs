@@ -7,9 +7,12 @@
  */
 use crate::v2::errors::SmugMugError;
 use crate::v2::parsers::{from_node_type, from_privacy};
-use crate::v2::{Album, AlbumResponse, Client, CreateAlbumProps, NodeType, NodeTypeFilters, PrivacyLevel, SortDirection, SortMethod, API_ORIGIN, NUM_TO_GET, NUM_TO_GET_STRING};
+use crate::v2::{
+    API_ORIGIN, Album, AlbumResponse, Client, CreateAlbumProps, NUM_TO_GET, NUM_TO_GET_STRING,
+    NodeType, NodeTypeFilters, PrivacyLevel, SortDirection, SortMethod,
+};
 use async_stream::try_stream;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -64,10 +67,10 @@ pub struct Node {
     pub node_type: NodeType,
 
     #[serde(rename = "DateAdded")]
-    pub date_created: chrono::DateTime<Utc>,
+    pub date_created: DateTime<Utc>,
 
     #[serde(rename = "DateModified")]
-    pub date_modified: chrono::DateTime<Utc>,
+    pub date_modified: DateTime<Utc>,
 
     #[serde(rename = "Uris")]
     uris: NodeUris,
@@ -80,6 +83,7 @@ impl Node {
         client
             .get::<NodeResponse>(url, Some(&params))
             .await?
+            .payload
             .ok_or(SmugMugError::ResponseMissing())
             .map(|mut v| {
                 v.node.client = client;
@@ -88,10 +92,10 @@ impl Node {
     }
 
     /// Returns information for the specified node id
-    pub async fn from_id(client: Arc<Client>, node_id: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_id(client: Arc<Client>, id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join("/api/v2/node/")?
-            .join(node_id)?;
+            .join(id)?;
         Self::from_url(client, req_url.as_str()).await
     }
 
@@ -111,10 +115,10 @@ impl Node {
 
         let data = serde_json::to_vec(&album_props)?;
 
-        self
-            .client
+        self.client
             .post::<AlbumResponse>(req_url.as_str(), data, Some(&params))
             .await?
+            .payload
             .ok_or(SmugMugError::ResponseMissing())
             .map(|mut v| {
                 v.album.client = self.client.clone();
@@ -122,14 +126,13 @@ impl Node {
             })
     }
 
-
     /// Retrieves the Child Nodes information for this Node
     pub fn children(
         &self,
         filter_by_type: NodeTypeFilters,
         sort_direction: SortDirection,
         sort_method: SortMethod,
-    ) -> impl Stream<Item=Result<Node, SmugMugError>> {
+    ) -> impl Stream<Item = Result<Node, SmugMugError>> {
         // Build up the query parameters
         let mut params = vec![
             ("_verbosity", "1"),
@@ -163,6 +166,7 @@ impl Node {
                 let nodes = self.client.get::<NodesResponse>(
                     req_url.as_str(), Some(&params)
                 ).await?
+                .payload
                 .ok_or(SmugMugError::ResponseMissing())?
                 .nodes;
 
@@ -200,7 +204,6 @@ struct NodeUris {
     // Only present if node is an album type
     #[serde(rename = "Album")]
     album: Option<String>,
-
     // #[serde(rename = "HighlightImage")]
     // highlight_image: String,
 }

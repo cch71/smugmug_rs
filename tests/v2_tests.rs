@@ -11,8 +11,8 @@ mod helpers;
 mod test {
     use crate::helpers;
     use dotenvy::dotenv;
-    use futures::{pin_mut, StreamExt};
-    use smugmug::v2::{Album, Client, Node, NodeTypeFilters, SortDirection, SortMethod, User};
+    use futures::{StreamExt, pin_mut};
+    use smugmug::v2::{Album, Client, Image, Node, NodeTypeFilters, SortDirection, SortMethod, User};
 
     #[tokio::test]
     async fn user_from_id() {
@@ -75,5 +75,15 @@ mod test {
             image_count += 1;
         }
         assert_eq!(album_info.image_count, image_count);
+    }
+
+    #[tokio::test]
+    async fn image_from_id() {
+        dotenv().ok();
+        let creds = helpers::get_read_only_auth_tokens().unwrap();
+        let client = Client::new(creds);
+        // Using CMAC example image id
+        let album_info = Image::from_id(client.clone(), "jPPKD2c").await.unwrap();
+        println!("Image info: {:?}", album_info);
     }
 }
