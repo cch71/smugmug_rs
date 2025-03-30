@@ -6,6 +6,7 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
+use crate::v2::macros::obj_from_url;
 use crate::v2::{API_ORIGIN, Client, Node};
 use serde::{Deserialize, Serialize};
 
@@ -47,25 +48,17 @@ pub struct User {
 }
 
 impl User {
+    const BASE_URI: &'static str = "/api/v2/user/";
+
     /// Returns information for the user at the provided full url
     pub async fn from_url(client: Client, url: &str) -> Result<User, SmugMugError> {
-        let params = vec![("_verbosity", "1")];
-        let client = client.clone();
-        client
-            .get::<UserResponse>(url, Some(&params))
-            .await?
-            .payload
-            .ok_or(SmugMugError::ResponseMissing())
-            .map(|mut v| {
-                v.user.client = client;
-                v.user
-            })
+        obj_from_url!(client, url, UserResponse, user)
     }
 
     /// Returns information for the specified user id
     pub async fn from_id(client: Client, id: &str) -> Result<User, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
-            .join("/api/v2/user/")?
+            .join(Self::BASE_URI)?
             .join(id)?;
         Self::from_url(client, req_url.as_str()).await
     }

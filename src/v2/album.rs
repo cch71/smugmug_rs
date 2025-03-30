@@ -6,6 +6,7 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
+use crate::v2::macros::{obj_from_url, objs_from_id_slice};
 use crate::v2::parsers::{from_empty_str_to_none, from_privacy};
 use crate::v2::{API_ORIGIN, Client, Image, NUM_TO_GET, NUM_TO_GET_STRING, PrivacyLevel};
 use async_stream::try_stream;
@@ -80,26 +81,27 @@ pub struct Album {
 }
 
 impl Album {
+    const BASE_URI: &'static str = "/api/v2/album/";
+
     /// Returns information for the album at the provided full url
     pub async fn from_url(client: Client, url: &str) -> Result<Self, SmugMugError> {
-        let params = vec![("_verbosity", "1")];
-        client
-            .get::<AlbumResponse>(url, Some(&params))
-            .await?
-            .payload
-            .ok_or(SmugMugError::ResponseMissing())
-            .map(|mut v| {
-                v.album.client = client;
-                v.album
-            })
+        obj_from_url!(client, url, AlbumResponse, album)
     }
 
     /// Returns information for the specified album id
     pub async fn from_id(client: Client, id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
-            .join("/api/v2/album/")?
+            .join(Self::BASE_URI)?
             .join(id)?;
         Self::from_url(client, req_url.as_str()).await
+    }
+
+    /// Returns information for the list of albums
+    pub async fn from_id_slice(
+        client: Client,
+        id_list: &[&str],
+    ) -> Result<Vec<Self>, SmugMugError> {
+        objs_from_id_slice!(client, id_list, Self::BASE_URI, AlbumsResponse, albums)
     }
 
     /// Retrieves information about the images associated with this Album
@@ -225,6 +227,12 @@ pub(crate) struct AlbumResponse {
     pub(crate) album: Album,
 }
 
+// Expected response from a User request
+#[derive(Deserialize, Debug)]
+struct AlbumsResponse {
+    #[serde(rename = "Album")]
+    albums: Vec<Album>,
+}
 // Expected response for a request to get an Album's images
 #[derive(Deserialize, Debug)]
 struct AlbumImagesResponse {

@@ -61,6 +61,20 @@ mod test {
     }
 
     #[tokio::test]
+    async fn get_multiple_nodes() {
+        dotenv().ok();
+        let creds = helpers::get_read_only_auth_tokens().unwrap();
+        let client = Client::new(creds);
+
+        // Using API Demo and cmac root node id
+        let nodes = Node::from_id_slice(client, &["2StTX5", "XWx8t"])
+            .await
+            .unwrap();
+
+        assert_eq!(nodes.len(), 2);
+    }
+
+    #[tokio::test]
     async fn album_from_id_and_images() {
         dotenv().ok();
         let creds = helpers::get_read_only_auth_tokens().unwrap();
@@ -77,6 +91,20 @@ mod test {
             image_count += 1;
         }
         assert_eq!(album_info.image_count, image_count);
+    }
+
+    #[tokio::test]
+    async fn get_multiple_albums() {
+        dotenv().ok();
+        let creds = helpers::get_read_only_auth_tokens().unwrap();
+        let client = Client::new(creds);
+
+        // Using cmac demo account to get 2 albums
+        let objs = Album::from_id_slice(client, &["RJHXVN", "TrBCmb"])
+            .await
+            .unwrap();
+
+        assert_eq!(objs.len(), 2);
     }
 
     #[tokio::test]
@@ -97,5 +125,19 @@ mod test {
 
         let digest = md5::compute(image_data);
         assert_eq!(&format!("{:x}", digest), image_md5sum);
+    }
+
+    #[tokio::test]
+    async fn get_multiple_images() {
+        dotenv().ok();
+        let creds = helpers::get_read_only_auth_tokens().unwrap();
+        let client = Client::new(creds);
+
+        // Using cmac demo account to get 2 images
+        let objs = Image::from_id_slice(client, &["jPPKD2c", "F9sMpg5"])
+            .await
+            .unwrap();
+
+        assert_eq!(objs.len(), 2);
     }
 }

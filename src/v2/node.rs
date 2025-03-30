@@ -6,6 +6,7 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
+use crate::v2::macros::{obj_from_url, objs_from_id_slice};
 use crate::v2::parsers::{from_node_type, from_privacy};
 use crate::v2::{
     API_ORIGIN, Album, AlbumResponse, Client, CreateAlbumProps, NUM_TO_GET, NUM_TO_GET_STRING,
@@ -76,26 +77,27 @@ pub struct Node {
 }
 
 impl Node {
+    const BASE_URI: &'static str = "/api/v2/node/";
+
     /// Returns information for the node at the provided full url
     pub async fn from_url(client: Client, url: &str) -> Result<Self, SmugMugError> {
-        let params = vec![("_verbosity", "1")];
-        client
-            .get::<NodeResponse>(url, Some(&params))
-            .await?
-            .payload
-            .ok_or(SmugMugError::ResponseMissing())
-            .map(|mut v| {
-                v.node.client = client;
-                v.node
-            })
+        obj_from_url!(client, url, NodeResponse, node)
     }
 
     /// Returns information for the specified node id
     pub async fn from_id(client: Client, id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
-            .join("/api/v2/node/")?
+            .join(Self::BASE_URI)?
             .join(id)?;
         Self::from_url(client, req_url.as_str()).await
+    }
+
+    /// Returns information for the list of node id
+    pub async fn from_id_slice(
+        client: Client,
+        id_list: &[&str],
+    ) -> Result<Vec<Self>, SmugMugError> {
+        objs_from_id_slice!(client, id_list, Self::BASE_URI, NodesResponse, nodes)
     }
 
     /// Retrieves the Album specific information about this Node
