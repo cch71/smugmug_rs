@@ -22,6 +22,7 @@
 //!     - Can set the upload key.
 //!     - Can list the images contained in an Album.
 //! - Retrieve Image information.
+//!     - Download of archive image supported.
 //! - Lower level interface for handling more direct communication.
 //!
 //! *The SmugMug API uses OAuth1. This library handles the request signing.

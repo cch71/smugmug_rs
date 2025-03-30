@@ -1,5 +1,4 @@
-SmugMug REST API Client Library
-===========================
+# SmugMug REST API Client Library
 
 [![GitHub Repo](https://img.shields.io/badge/github-cch71%2Fsmugmug-green?logo=github)](https://github.com/cch71/smugmug_rs.git)
 [![Static Badge](https://img.shields.io/badge/crate.io-smugmug-blue?logo=rust)](https://crates.io/crates/smugmug)
@@ -14,20 +13,20 @@ For further details on the Rest API refer to: [SmugMug API Docs](https://api.smu
 
 - Retrieve Basic user information (Read only).
 - Retrieve Node information.
-    - Can create an Album.
-    - List children of a Node.
+  - Can create an Album.
+  - List children of a Node.
 - Retrieve Album information.
-    - Can set the upload key.
-    - Can list the images contained in an Album.
+  - Can set the upload key.
+  - Can list the images contained in an Album.
 - Retrieve Image information.
-    - Does not currently provide a way to download an image.
+  - Download of the archive image supported.
 - Lower level interface for handling more direct communication.
 
-*The SmugMug API uses OAuth1. This library handles the request signing.
-Getting the Access Token/Secret is left up to the consumer of this library*
+_The SmugMug API uses OAuth1. This library handles the request signing.
+Getting the Access Token/Secret is left up to the consumer of this library_
 
 The [`v2::Client`] currently provides direct GET/PATCH/POST functionality to allow library usage
-for features that may not be implemented yet in the higher level interfaces*
+for features that may not be implemented yet in the higher level interfaces\*
 
 ## Usage
 
