@@ -11,8 +11,10 @@ mod helpers;
 mod test {
     use crate::helpers;
     use dotenvy::dotenv;
-    use futures::{pin_mut, StreamExt};
-    use smugmug::v2::{Album, Client, Node, NodeTypeFilters, SortDirection, SortMethod, User};
+    use futures::{StreamExt, pin_mut};
+    use smugmug::v2::{
+        Album, Client, Image, Node, NodeTypeFilters, SortDirection, SortMethod, User,
+    };
 
     #[tokio::test]
     async fn user_from_id() {
@@ -59,6 +61,20 @@ mod test {
     }
 
     #[tokio::test]
+    async fn get_multiple_nodes() {
+        dotenv().ok();
+        let creds = helpers::get_read_only_auth_tokens().unwrap();
+        let client = Client::new(creds);
+
+        // Using API Demo and cmac root node id
+        let nodes = Node::from_id_slice(client, &["2StTX5", "XWx8t"])
+            .await
+            .unwrap();
+
+        assert_eq!(nodes.len(), 2);
+    }
+
+    #[tokio::test]
     async fn album_from_id_and_images() {
         dotenv().ok();
         let creds = helpers::get_read_only_auth_tokens().unwrap();
@@ -75,5 +91,53 @@ mod test {
             image_count += 1;
         }
         assert_eq!(album_info.image_count, image_count);
+    }
+
+    #[tokio::test]
+    async fn get_multiple_albums() {
+        dotenv().ok();
+        let creds = helpers::get_read_only_auth_tokens().unwrap();
+        let client = Client::new(creds);
+
+        // Using cmac demo account to get 2 albums
+        let objs = Album::from_id_slice(client, &["RJHXVN", "TrBCmb"])
+            .await
+            .unwrap();
+
+        assert_eq!(objs.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn image_from_id() {
+        dotenv().ok();
+        let creds = helpers::get_read_only_auth_tokens().unwrap();
+        let client = Client::new(creds);
+        // Using CMAC example image id
+        let image_info = Image::from_id(client.clone(), "jPPKD2c").await.unwrap();
+        println!("Image info: {:?}", image_info);
+
+        // Download image and verify data is good
+        let image_md5sum = image_info.archived_md5.as_ref().unwrap();
+        let image_size = image_info.archived_size.unwrap();
+        let image_data = image_info.get_archive().await.unwrap();
+
+        assert_eq!(image_data.len(), image_size as usize);
+
+        let digest = md5::compute(image_data);
+        assert_eq!(&format!("{:x}", digest), image_md5sum);
+    }
+
+    #[tokio::test]
+    async fn get_multiple_images() {
+        dotenv().ok();
+        let creds = helpers::get_read_only_auth_tokens().unwrap();
+        let client = Client::new(creds);
+
+        // Using cmac demo account to get 2 images
+        let objs = Image::from_id_slice(client, &["jPPKD2c", "F9sMpg5"])
+            .await
+            .unwrap();
+
+        assert_eq!(objs.len(), 2);
     }
 }

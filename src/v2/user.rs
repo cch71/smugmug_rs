@@ -6,18 +6,18 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
-use crate::v2::{Client, Node, API_ORIGIN};
-use serde::Deserialize;
-use std::sync::Arc;
+use crate::v2::macros::obj_from_url;
+use crate::v2::{API_ORIGIN, Client, Node};
+use serde::{Deserialize, Serialize};
 
 /// Holds information returned from the User API.
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/user.html) for more
 /// details on the individual fields.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct User {
     #[serde(skip)]
-    pub(crate) client: Arc<Client>,
+    pub(crate) client: Client,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -43,35 +43,28 @@ pub struct User {
     #[serde(rename = "WebUri")]
     pub web_uri: String,
 
-    #[serde(rename = "Uris")]
+    #[serde(skip_serializing, rename = "Uris")]
     uris: UserUris,
 }
 
 impl User {
+    const BASE_URI: &'static str = "/api/v2/user/";
+
     /// Returns information for the user at the provided full url
-    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<User, SmugMugError> {
-        let params = vec![("_verbosity", "1")];
-        let client = client.clone();
-        client
-            .get::<UserResponse>(url, Some(&params))
-            .await?
-            .ok_or(SmugMugError::ResponseMissing())
-            .map(|mut v| {
-                v.user.client = client;
-                v.user
-            })
+    pub async fn from_url(client: Client, url: &str) -> Result<User, SmugMugError> {
+        obj_from_url!(client, url, UserResponse, user)
     }
 
     /// Returns information for the specified user id
-    pub async fn from_id(client: Arc<Client>, user_id: &str) -> Result<User, SmugMugError> {
+    pub async fn from_id(client: Client, id: &str) -> Result<User, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
-            .join("/api/v2/user/")?
-            .join(user_id)?;
+            .join(Self::BASE_URI)?
+            .join(id)?;
         Self::from_url(client, req_url.as_str()).await
     }
 
     /// Returns information for the authenticated user
-    pub async fn authenticated_user_info(client: Arc<Client>) -> Result<User, SmugMugError> {
+    pub async fn authenticated_user_info(client: Client) -> Result<User, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?.join("/api/v2!authuser")?;
         Self::from_url(client, req_url.as_str()).await
     }
@@ -86,7 +79,6 @@ impl User {
 struct UserUris {
     #[serde(rename = "Node")]
     node: String,
-
     // #[serde(rename = "Features")]
     // features: String,
 

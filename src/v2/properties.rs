@@ -43,7 +43,7 @@ pub enum NodeTypeFilters {
     FolderAlbumPage,
 }
 
-#[derive(Debug, EnumString, IntoStaticStr)]
+#[derive(Debug, Serialize, EnumString, IntoStaticStr)]
 pub enum NodeType {
     Unknown,
     Album,
@@ -54,4 +54,3 @@ pub enum NodeType {
     #[strum(to_string = "System Page")]
     SystemPage,
 }
-

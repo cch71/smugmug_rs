@@ -32,6 +32,9 @@ pub enum SmugMugError {
     #[error("This is not an album")]
     NotAnAlbum(),
 
+    #[error("Image archive not found for: {0} image key:{1}")]
+    ImageArchiveNotFound(String, String),
+
     #[error("Expected response missing")]
     ResponseMissing(),
 
@@ -41,7 +44,9 @@ pub enum SmugMugError {
     #[error("API Response error code is invalid")]
     ApiResponseCode(#[from] TryFromPrimitiveError<ApiErrorCodes>),
 
+    #[error("API Response is a too many requests error. Retry after {0} seconds")]
+    ApiResponseTooManyRequests(u64),
+
     #[error("API Response is malformed: {0:?}")]
     ApiResponseMalformed(reqwest::Error),
 }
-

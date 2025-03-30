@@ -6,23 +6,26 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
+use crate::v2::macros::{obj_from_url, objs_from_id_slice};
 use crate::v2::parsers::{from_node_type, from_privacy};
-use crate::v2::{Album, AlbumResponse, Client, CreateAlbumProps, NodeType, NodeTypeFilters, PrivacyLevel, SortDirection, SortMethod, API_ORIGIN, NUM_TO_GET, NUM_TO_GET_STRING};
+use crate::v2::{
+    API_ORIGIN, Album, AlbumResponse, Client, CreateAlbumProps, NUM_TO_GET, NUM_TO_GET_STRING,
+    NodeType, NodeTypeFilters, PrivacyLevel, SortDirection, SortMethod,
+};
 use async_stream::try_stream;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use futures::Stream;
-use serde::Deserialize;
-use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
 /// Holds information returned from the Node API.
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/node.html) for more
 /// details on the individual fields.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Node {
     // Common to Node and Album types
     #[serde(skip)]
-    pub(crate) client: Arc<Client>,
+    pub(crate) client: Client,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -64,35 +67,37 @@ pub struct Node {
     pub node_type: NodeType,
 
     #[serde(rename = "DateAdded")]
-    pub date_created: chrono::DateTime<Utc>,
+    pub date_created: DateTime<Utc>,
 
     #[serde(rename = "DateModified")]
-    pub date_modified: chrono::DateTime<Utc>,
+    pub date_modified: DateTime<Utc>,
 
-    #[serde(rename = "Uris")]
+    #[serde(skip_serializing, rename = "Uris")]
     uris: NodeUris,
 }
 
 impl Node {
+    const BASE_URI: &'static str = "/api/v2/node/";
+
     /// Returns information for the node at the provided full url
-    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
-        let params = vec![("_verbosity", "1")];
-        client
-            .get::<NodeResponse>(url, Some(&params))
-            .await?
-            .ok_or(SmugMugError::ResponseMissing())
-            .map(|mut v| {
-                v.node.client = client;
-                v.node
-            })
+    pub async fn from_url(client: Client, url: &str) -> Result<Self, SmugMugError> {
+        obj_from_url!(client, url, NodeResponse, node)
     }
 
     /// Returns information for the specified node id
-    pub async fn from_id(client: Arc<Client>, node_id: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_id(client: Client, id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
-            .join("/api/v2/node/")?
-            .join(node_id)?;
+            .join(Self::BASE_URI)?
+            .join(id)?;
         Self::from_url(client, req_url.as_str()).await
+    }
+
+    /// Returns information for the list of node id
+    pub async fn from_id_slice(
+        client: Client,
+        id_list: &[&str],
+    ) -> Result<Vec<Self>, SmugMugError> {
+        objs_from_id_slice!(client, id_list, Self::BASE_URI, NodesResponse, nodes)
     }
 
     /// Retrieves the Album specific information about this Node
@@ -111,10 +116,10 @@ impl Node {
 
         let data = serde_json::to_vec(&album_props)?;
 
-        self
-            .client
+        self.client
             .post::<AlbumResponse>(req_url.as_str(), data, Some(&params))
             .await?
+            .payload
             .ok_or(SmugMugError::ResponseMissing())
             .map(|mut v| {
                 v.album.client = self.client.clone();
@@ -122,14 +127,13 @@ impl Node {
             })
     }
 
-
     /// Retrieves the Child Nodes information for this Node
     pub fn children(
         &self,
         filter_by_type: NodeTypeFilters,
         sort_direction: SortDirection,
         sort_method: SortMethod,
-    ) -> impl Stream<Item=Result<Node, SmugMugError>> {
+    ) -> impl Stream<Item = Result<Node, SmugMugError>> {
         // Build up the query parameters
         let mut params = vec![
             ("_verbosity", "1"),
@@ -163,6 +167,7 @@ impl Node {
                 let nodes = self.client.get::<NodesResponse>(
                     req_url.as_str(), Some(&params)
                 ).await?
+                .payload
                 .ok_or(SmugMugError::ResponseMissing())?
                 .nodes;
 
@@ -200,7 +205,6 @@ struct NodeUris {
     // Only present if node is an album type
     #[serde(rename = "Album")]
     album: Option<String>,
-
     // #[serde(rename = "HighlightImage")]
     // highlight_image: String,
 }

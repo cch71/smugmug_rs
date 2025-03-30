@@ -6,14 +6,15 @@
  *  at your option.
  */
 
-pub mod client;
-mod parsers;
-pub mod user;
-pub mod node;
 pub mod album;
-pub mod image;
-pub mod properties;
+pub mod client;
 pub mod errors;
+pub mod image;
+mod macros;
+pub mod node;
+mod parsers;
+pub mod properties;
+pub mod user;
 
 pub use album::*;
 pub use client::*;

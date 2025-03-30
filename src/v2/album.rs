@@ -6,24 +6,24 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
+use crate::v2::macros::{obj_from_url, objs_from_id_slice};
 use crate::v2::parsers::{from_empty_str_to_none, from_privacy};
-use crate::v2::{AlbumImagesResponse, Client, Image, PrivacyLevel, API_ORIGIN, NUM_TO_GET, NUM_TO_GET_STRING};
+use crate::v2::{API_ORIGIN, Client, Image, NUM_TO_GET, NUM_TO_GET_STRING, PrivacyLevel};
 use async_stream::try_stream;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
 
 /// Holds information returned from the Album API.
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/album.html) for more
 /// details on the individual fields.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Album {
     // Common to Node and Album types
     #[serde(skip)]
-    pub(crate) client: Arc<Client>,
+    pub(crate) client: Client,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -53,7 +53,11 @@ pub struct Album {
     #[serde(rename = "SmugSearchable")]
     pub is_smug_searchable: Option<String>,
 
-    #[serde(default, rename = "UploadKey", deserialize_with = "from_empty_str_to_none")]
+    #[serde(
+        default,
+        rename = "UploadKey",
+        deserialize_with = "from_empty_str_to_none"
+    )]
     pub upload_key: Option<String>,
 
     #[serde(rename = "ImageCount")]
@@ -64,42 +68,44 @@ pub struct Album {
 
     // Album specific fields
     #[serde(rename = "Date")]
-    pub date_created: Option<chrono::DateTime<Utc>>,
+    pub date_created: Option<DateTime<Utc>>,
 
     #[serde(rename = "ImagesLastUpdated")]
-    pub images_last_updated: chrono::DateTime<Utc>,
+    pub images_last_updated: DateTime<Utc>,
 
     #[serde(rename = "LastUpdated")]
-    pub last_updated: chrono::DateTime<Utc>,
+    pub last_updated: DateTime<Utc>,
 
-    #[serde(rename = "Uris")]
+    #[serde(skip_serializing, rename = "Uris")]
     uris: AlbumUris,
 }
 
 impl Album {
+    const BASE_URI: &'static str = "/api/v2/album/";
+
     /// Returns information for the album at the provided full url
-    pub async fn from_url(client: Arc<Client>, url: &str) -> Result<Self, SmugMugError> {
-        let params = vec![("_verbosity", "1")];
-        client
-            .get::<AlbumResponse>(url, Some(&params))
-            .await?
-            .ok_or(SmugMugError::ResponseMissing())
-            .map(|mut v| {
-                v.album.client = client;
-                v.album
-            })
+    pub async fn from_url(client: Client, url: &str) -> Result<Self, SmugMugError> {
+        obj_from_url!(client, url, AlbumResponse, album)
     }
 
     /// Returns information for the specified album id
-    pub async fn from_id(client: Arc<Client>, node_id: &str) -> Result<Self, SmugMugError> {
+    pub async fn from_id(client: Client, id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
-            .join("/api/v2/album/")?
-            .join(node_id)?;
+            .join(Self::BASE_URI)?
+            .join(id)?;
         Self::from_url(client, req_url.as_str()).await
     }
 
+    /// Returns information for the list of albums
+    pub async fn from_id_slice(
+        client: Client,
+        id_list: &[&str],
+    ) -> Result<Vec<Self>, SmugMugError> {
+        objs_from_id_slice!(client, id_list, Self::BASE_URI, AlbumsResponse, albums)
+    }
+
     /// Retrieves information about the images associated with this Album
-    pub fn images(&self) -> impl Stream<Item=Result<Image, SmugMugError>> {
+    pub fn images(&self) -> impl Stream<Item = Result<Image, SmugMugError>> {
         // Build up the query parameters
         let params = vec![("_verbosity", "1"), ("count", NUM_TO_GET_STRING)];
 
@@ -117,6 +123,7 @@ impl Album {
                 let nodes = self.client.get::<AlbumImagesResponse>(
                     req_url.as_str(), Some(&params)
                 ).await?
+                .payload
                 .ok_or(SmugMugError::ResponseMissing())?
                 .images;
 
@@ -138,8 +145,10 @@ impl Album {
     async fn update_upload_key(&self, data: Vec<u8>) -> Result<Album, SmugMugError> {
         let params = vec![("_verbosity", "1")];
         let req_url = url::Url::parse(API_ORIGIN)?.join(self.uri.as_str())?;
-        self.client.patch::<AlbumResponse>(req_url.as_str(), data, Some(&params))
+        self.client
+            .patch::<AlbumResponse>(req_url.as_str(), data, Some(&params))
             .await?
+            .payload
             .ok_or(SmugMugError::ResponseMissing())
             .map(|mut v| {
                 v.album.client = self.client.clone();
@@ -165,7 +174,6 @@ impl Album {
 struct AlbumUris {
     #[serde(rename = "AlbumImages")]
     album_images: String,
-
     // #[serde(rename = "User")]
     // user: String,
 
@@ -203,7 +211,6 @@ pub struct CreateAlbumProps {
 
     // #[serde(rename = "SmugSearchable")]
     // pub is_smug_searchable: String,
-
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default, rename = "UploadKey")]
     pub upload_key: Option<String>,
@@ -218,4 +225,17 @@ pub struct CreateAlbumProps {
 pub(crate) struct AlbumResponse {
     #[serde(rename = "Album")]
     pub(crate) album: Album,
+}
+
+// Expected response from a User request
+#[derive(Deserialize, Debug)]
+struct AlbumsResponse {
+    #[serde(rename = "Album")]
+    albums: Vec<Album>,
+}
+// Expected response for a request to get an Album's images
+#[derive(Deserialize, Debug)]
+struct AlbumImagesResponse {
+    #[serde(rename = "AlbumImage")]
+    images: Vec<Image>,
 }

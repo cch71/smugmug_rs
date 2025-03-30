@@ -5,19 +5,21 @@
  *  - MIT license <http://opensource.org/licenses/MIT>
  *  at your option.
  */
-use crate::v2::Client;
-use chrono::Utc;
-use serde::Deserialize;
-use std::sync::Arc;
+use crate::v2::errors::SmugMugError;
+use crate::v2::macros::{obj_from_url, objs_from_id_slice};
+use crate::v2::{API_ORIGIN, Client};
+use bytes::Bytes;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Holds information returned from the AlbumImage/Image API.
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/image.html) for more
 /// details on the individual fields.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Image {
     #[serde(skip)]
-    pub(crate) client: Arc<Client>,
+    pub(crate) client: Client,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -43,36 +45,91 @@ pub struct Image {
     #[serde(rename = "FileName")]
     pub file_name: String,
 
+    #[serde(rename = "ImageKey")]
+    pub image_key: String,
+
+    #[serde(rename = "KeywordArray")]
+    pub keywords: Vec<String>,
+
+    #[serde(rename = "ArchivedUri")]
+    pub archived_uri: Option<String>,
+
+    #[serde(rename = "ArchivedMD5")]
+    pub archived_md5: Option<String>,
+
+    #[serde(rename = "ArchivedSize")]
+    pub archived_size: Option<u64>,
+
+    #[serde(rename = "Processing")]
+    pub is_processing: bool,
+
     #[serde(rename = "IsVideo")]
     pub is_video: bool,
 
     #[serde(rename = "Hidden")]
     pub is_hidden: bool,
 
-    #[serde(rename = "Watermarked")]
+    #[serde(default, rename = "Watermarked")]
     pub is_watermarked: bool,
 
     // Album specific fields
     #[serde(rename = "DateTimeUploaded")]
-    pub date_created: chrono::DateTime<Utc>,
+    pub date_created: DateTime<Utc>,
 
     #[serde(rename = "LastUpdated")]
-    pub last_updated: chrono::DateTime<Utc>,
-
-    // #[serde(rename = "Uris")]
-    // uris: ImageUris,
+    pub last_updated: DateTime<Utc>,
 }
 
-// Uris returned for an Image/AlbumImage
-// #[derive(Deserialize, Debug)]
-// struct ImageUris {
-//     #[serde(rename = "ImageSizeDetails")]
-//     image_size_details: String,
-// }
+impl Image {
+    const BASE_URI: &'static str = "/api/v2/image/";
 
-// Expected response for a request to get an Album's images
+    /// Returns information for the image at the provided full url
+    pub async fn from_url(client: Client, url: &str) -> Result<Self, SmugMugError> {
+        obj_from_url!(client, url, ImageResponse, image)
+    }
+
+    /// Returns information for the specified image id
+    pub async fn from_id(client: Client, id: &str) -> Result<Self, SmugMugError> {
+        let req_url = url::Url::parse(API_ORIGIN)?
+            .join(Self::BASE_URI)?
+            .join(id)?;
+        Self::from_url(client, req_url.as_str()).await
+    }
+
+    /// Returns information for the list of image id
+    pub async fn from_id_slice(
+        client: Client,
+        id_list: &[&str],
+    ) -> Result<Vec<Self>, SmugMugError> {
+        objs_from_id_slice!(client, id_list, Self::BASE_URI, ImagesResponse, images)
+    }
+
+    /// Retrieves the image data found at the archive uri
+    pub async fn get_archive(&self) -> Result<Bytes, SmugMugError> {
+        match self.archived_uri.as_ref() {
+            Some(archived_uri) => Ok(self
+                .client
+                .get_binary_data(archived_uri, None)
+                .await?
+                .payload
+                .unwrap()),
+            None => Err(SmugMugError::ImageArchiveNotFound(
+                self.file_name.clone(),
+                self.image_key.clone(),
+            )),
+        }
+    }
+}
+
+// Expected response for a request to get an Image
 #[derive(Deserialize, Debug)]
-pub(crate) struct AlbumImagesResponse {
-    #[serde(rename = "AlbumImage")]
-    pub(crate) images: Vec<Image>,
+struct ImageResponse {
+    #[serde(rename = "Image")]
+    image: Image,
+}
+// Expected response for a request to get Images
+#[derive(Deserialize, Debug)]
+struct ImagesResponse {
+    #[serde(rename = "Image")]
+    images: Vec<Image>,
 }
