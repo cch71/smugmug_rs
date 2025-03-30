@@ -24,6 +24,7 @@
 //! - Retrieve Image information.
 //!     - Download of archive image supported.
 //! - Lower level interface for handling more direct communication.
+//!     - Exposes the SmugMug API Rate Limit information.
 //!
 //! *The SmugMug API uses OAuth1. This library handles the request signing.
 //! Getting the Access Token/Secret is left up to the consumer of this library*

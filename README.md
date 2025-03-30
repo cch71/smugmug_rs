@@ -21,6 +21,7 @@ For further details on the Rest API refer to: [SmugMug API Docs](https://api.smu
 - Retrieve Image information.
   - Download of the archive image supported.
 - Lower level interface for handling more direct communication.
+  - Exposes the SmugMug API Rate Limit information.
 
 _The SmugMug API uses OAuth1. This library handles the request signing.
 Getting the Access Token/Secret is left up to the consumer of this library_

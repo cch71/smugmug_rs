@@ -10,6 +10,7 @@ mod helpers;
 #[cfg(test)]
 mod test {
     use crate::helpers;
+    use chrono::Utc;
     use dotenvy::dotenv;
     use futures::{StreamExt, pin_mut};
     use smugmug::v2::{
@@ -21,7 +22,12 @@ mod test {
         dotenv().ok();
         let creds = helpers::get_read_only_auth_tokens().unwrap();
         let client = Client::new(creds);
+        assert!(client.get_last_rate_limit_window_update().is_none());
         let user_info = User::from_id(client.clone(), "apidemo").await.unwrap();
+        let rate_limit = client.get_last_rate_limit_window_update().unwrap();
+        assert!(Utc::now() < rate_limit.window_reset_datetime().unwrap());
+        assert!(0 != rate_limit.num_remaining_requests().unwrap());
+
         println!("User info: {:?}", user_info);
     }
 
@@ -32,7 +38,9 @@ mod test {
         dotenv().ok();
         let creds = helpers::get_full_auth_tokens().unwrap();
         let client = Client::new(creds);
+        assert!(client.get_last_rate_limit_window_update().is_none());
         let user_info = User::authenticated_user_info(client.clone()).await.unwrap();
+        assert!(client.get_last_rate_limit_window_update().is_some());
         println!("User info: {:?}", user_info);
     }
 
@@ -112,8 +120,10 @@ mod test {
         dotenv().ok();
         let creds = helpers::get_read_only_auth_tokens().unwrap();
         let client = Client::new(creds);
+        assert!(client.get_last_rate_limit_window_update().is_none());
         // Using CMAC example image id
         let image_info = Image::from_id(client.clone(), "jPPKD2c").await.unwrap();
+        assert!(client.get_last_rate_limit_window_update().is_some());
         println!("Image info: {:?}", image_info);
 
         // Download image and verify data is good

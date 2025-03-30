@@ -7,14 +7,15 @@
  */
 use crate::v2::errors::SmugMugError;
 use bytes::Bytes;
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Duration, TimeZone, Utc};
 use const_format::formatcp;
 use num_enum::TryFromPrimitive;
 use reqwest::Response as ReqwestResponse;
+use reqwest::header::HeaderMap;
 use reqwest_oauth1::{OAuthClientProvider, SecretsProvider};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 // Root SmugMug API
 pub(crate) const API_ORIGIN: &str = "https://api.smugmug.com";
@@ -76,6 +77,24 @@ impl Client {
     ) -> Result<Response<T>, SmugMugError> {
         self.inner.post::<T>(url, data, params).await
     }
+
+    /// Retrieves the last update for the API rate limit information.  This will return none if
+    /// a get/post/patch API call hasn't been made yet.
+    ///
+    /// *NOTE: This isn't updated after [`Self::get_binary_data`] calls used in retrieving images/videos*
+    pub fn get_last_rate_limit_window_update(&self) -> Option<Arc<RateLimitWindow>> {
+        let rate_window = self
+            .inner
+            .last_rate_window
+            .read()
+            .expect("Failed read locking for last rate window update")
+            .clone();
+        if rate_window.is_valid() {
+            Some(rate_window)
+        } else {
+            None
+        }
+    }
 }
 
 // Internal representation of the client
@@ -83,6 +102,7 @@ impl Client {
 struct ClientRef {
     creds: Creds,
     https_client: reqwest::Client,
+    last_rate_window: RwLock<Arc<RateLimitWindow>>,
 }
 
 impl ClientRef {
@@ -91,6 +111,9 @@ impl ClientRef {
         Self {
             creds,
             https_client: reqwest::Client::new(),
+            last_rate_window: RwLock::new(Arc::new(RateLimitWindow {
+                ..Default::default()
+            })),
         }
     }
 
@@ -144,17 +167,16 @@ impl ClientRef {
             self.https_client.clone().get(req_url).send().await?
         };
 
-        // Get current rate limit values
-        let rate_limit = self.extract_rate_limits_from_response(&resp);
+        // Rate Limits aren't returned for this kind of call
 
         // Check if the http error code returned was an error
-        self.error_on_http_status(&resp)?;
+        self.error_on_http_status(&resp, None)?;
 
         // Pull out the payload
         match resp.bytes().await {
             Ok(body) => Ok(Response {
                 payload: Some(body),
-                rate_limit,
+                rate_limit: None,
             }),
             Err(err) => Err(SmugMugError::ApiResponseMalformed(err)),
         }
@@ -203,33 +225,31 @@ impl ClientRef {
     }
 
     // Parse the rate limit headers that are returned.
-    fn extract_rate_limits_from_response(&self, resp: &ReqwestResponse) -> RateLimitWindow {
-        let remaining_requests = resp
-            .headers()
-            .get("X-RateLimit-Remaining")
-            .and_then(|v| v.to_str().map_or(None, |v| v.parse().ok()));
-        let current_window_reset_time = resp.headers().get("X-RateLimit-Reset").and_then(|v| {
-            v.to_str().map_or(None, |v| {
-                v.parse::<i64>()
-                    .ok()
-                    .and_then(|v| Utc.timestamp_opt(v, 0).latest())
+    fn extract_rate_limits_from_response(&self, resp: &ReqwestResponse) -> Arc<RateLimitWindow> {
+        // Extract the rate limits
+        let rate_limit = Arc::new(RateLimitWindow::from_reqwest_headers(
+            Utc::now(),
+            resp.headers(),
+        ));
+
+        // Write the latest value to the clients stores last rate window update area
+        self.last_rate_window
+            .write()
+            .map(|mut v| {
+                *v = rate_limit.clone();
             })
-        });
-        RateLimitWindow {
-            remaining_requests,
-            current_window_reset_time,
-        }
+            .unwrap();
+        rate_limit
     }
 
     // Returns an error on an http error
-    fn error_on_http_status(&self, resp: &ReqwestResponse) -> Result<(), SmugMugError> {
+    fn error_on_http_status(
+        &self,
+        resp: &ReqwestResponse,
+        rate_limit: Option<&RateLimitWindow>,
+    ) -> Result<(), SmugMugError> {
         let _ = resp.error_for_status_ref().map_err(|v| {
-            let retry_after_opt = resp
-                .headers()
-                .get("Retry-After")
-                .and_then(|v| v.to_str().map_or(None, |v| v.parse().ok()));
-
-            match retry_after_opt {
+            match rate_limit.and_then(|v| v.retry_after_seconds()) {
                 Some(retry_after) if resp.status().as_u16() == 429 => {
                     SmugMugError::ApiResponseTooManyRequests(retry_after)
                 }
@@ -248,7 +268,7 @@ impl ClientRef {
         let rate_limit = self.extract_rate_limits_from_response(&resp);
 
         // Check if the http error code returned was an error
-        self.error_on_http_status(&resp)?;
+        self.error_on_http_status(&resp, Some(&rate_limit))?;
 
         // Pull out the payload
         match resp.json::<ResponseBody<T>>().await {
@@ -258,7 +278,7 @@ impl ClientRef {
                 }
                 Ok(Response {
                     payload: body.response,
-                    rate_limit,
+                    rate_limit: Some(rate_limit),
                 })
             }
             Err(err) => Err(SmugMugError::ApiResponseMalformed(err)),
@@ -319,16 +339,85 @@ pub enum ApiErrorCodes {
     InternalServerError = 500,
     ServiceUnavailable = 503,
 }
+
 /// The call rate limits returned from the REST API call.
+#[derive(Default, Clone)]
 pub struct RateLimitWindow {
-    pub remaining_requests: Option<u64>,
-    pub current_window_reset_time: Option<DateTime<Utc>>,
+    num_remaining_requests: Option<u64>,
+    current_window_reset_datetime: Option<DateTime<Utc>>,
+    retry_after_seconds: Option<u64>,
+    timestamp: DateTime<Utc>,
 }
 
-/// Response returned by the client requests
+impl RateLimitWindow {
+    // Pull out the rate limit headers
+    fn from_reqwest_headers(timestamp: DateTime<Utc>, headers: &HeaderMap) -> Self {
+        // Parse the headers fully per call since we are rate limited and taking time to parse
+        // is potentially better than storing raw and performance of parsing on call.
+        let retry_after_seconds = headers
+            .get("retry-after")
+            .and_then(|v| v.to_str().map_or(None, |v| v.parse().ok()));
+
+        let num_remaining_requests = headers
+            .get("x-ratelimit-remaining")
+            .and_then(|v| v.to_str().map_or(None, |v| v.parse().ok()));
+
+        let current_window_reset_datetime = headers.get("x-ratelimit-reset").and_then(|v| {
+            v.to_str().map_or(None, |v| {
+                v.parse::<i64>()
+                    .ok()
+                    .and_then(|v| Utc.timestamp_opt(v, 0).latest())
+            })
+        });
+
+        RateLimitWindow {
+            num_remaining_requests,
+            current_window_reset_datetime,
+            retry_after_seconds,
+            timestamp,
+        }
+    }
+
+    /// Number of remaining requests until a [`SmugMugError::ApiResponseTooManyRequests`] error
+    pub fn num_remaining_requests(&self) -> Option<u64> {
+        self.num_remaining_requests
+    }
+
+    /// UTC Date/Time until current rate window ends
+    pub fn window_reset_datetime(&self) -> Option<DateTime<Utc>> {
+        self.current_window_reset_datetime
+    }
+
+    /// If the [`SmugMugError::ApiResponseTooManyRequests`] error is returned this will be the
+    /// number of seconds until API calls can be resumed
+    pub fn retry_after_seconds(&self) -> Option<u64> {
+        self.retry_after_seconds
+    }
+
+    /// Returns true if either [`Self::num_remaining_requests`] or [`Self::retry_after_seconds`] are not None
+    pub fn is_valid(&self) -> bool {
+        self.num_remaining_requests.is_some() || self.retry_after_seconds.is_some()
+    }
+
+    /// If the caller has used up the number of request allocated, then the time returned indicates
+    /// when requests can be resumed
+    pub fn resume_after(&self) -> Option<DateTime<Utc>> {
+        self.retry_after_seconds
+            .map(|v| self.timestamp + Duration::seconds(v as i64))
+    }
+
+    /// Timestamp this was recorded
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        self.timestamp
+    }
+}
+
+/// Response returned by the [`Client`]` get/get_binary_data/post/patch/requests
 pub struct Response<T> {
+    /// Request data being returned.
     pub payload: Option<T>,
-    pub rate_limit: RateLimitWindow,
+    /// Returns rate limit for the last call.  This will be None for binary data retrieval.
+    pub rate_limit: Option<Arc<RateLimitWindow>>,
 }
 
 /// Holds credentials used for accessing/signing REST requests
