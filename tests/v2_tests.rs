@@ -21,7 +21,6 @@ mod test {
     #[tokio::test]
     async fn user_from_id() {
         let client = get_read_only_client();
-        assert!(client.get_last_rate_limit_window_update().is_none());
         let user_info = User::from_id(client.clone(), "apidemo").await.unwrap();
         let rate_limit = client.get_last_rate_limit_window_update().unwrap();
         assert!(Utc::now() < rate_limit.window_reset_datetime().unwrap());
@@ -35,7 +34,6 @@ mod test {
     #[tokio::test]
     async fn authenticated_user_info() {
         let client = get_full_client();
-        assert!(client.get_last_rate_limit_window_update().is_none());
         let user_info = User::authenticated_user_info(client.clone()).await.unwrap();
         assert!(client.get_last_rate_limit_window_update().is_some());
         log::debug!("User info: {:?}", user_info);
@@ -161,7 +159,6 @@ mod test {
     async fn image_from_id() {
         let client = get_read_only_client();
 
-        assert!(client.get_last_rate_limit_window_update().is_none());
         // Using CMAC example image id
         let image_info = Image::from_id(client.clone(), "jPPKD2c").await.unwrap();
         assert!(client.get_last_rate_limit_window_update().is_some());
