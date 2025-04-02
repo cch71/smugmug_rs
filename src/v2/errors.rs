@@ -32,6 +32,9 @@ pub enum SmugMugError {
     #[error("This is not an album")]
     NotAnAlbum(),
 
+    #[error("Client not found")]
+    ClientNotFound(),
+
     #[error("Image archive not found for: {0} image key:{1}")]
     ImageArchiveNotFound(String, String),
 
@@ -48,5 +51,5 @@ pub enum SmugMugError {
     ApiResponseTooManyRequests(u64),
 
     #[error("API Response is malformed: {0:?}")]
-    ApiResponseMalformed(reqwest::Error),
+    ApiResponseMalformed(serde_json::Error),
 }

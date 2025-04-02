@@ -6,24 +6,26 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
-use crate::v2::macros::{obj_from_url, objs_from_id_slice};
-use crate::v2::parsers::{from_empty_str_to_none, from_privacy};
-use crate::v2::{API_ORIGIN, Client, Image, NUM_TO_GET, NUM_TO_GET_STRING, PrivacyLevel};
+use crate::v2::macros::{obj_from_url, objs_from_id_slice, stream_children_from_url};
+use crate::v2::parsers::{from_privacy, is_none_or_empty_str};
+use crate::v2::{Client, Image, Pages, PrivacyLevel, API_ORIGIN};
 use async_stream::try_stream;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 
 /// Holds information returned from the Album API.
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/album.html) for more
 /// details on the individual fields.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct Album {
     // Common to Node and Album types
     #[serde(skip)]
-    pub(crate) client: Client,
+    pub(crate) client: Option<Client>,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -34,11 +36,11 @@ pub struct Album {
     #[serde(rename = "Name")]
     pub name: String,
 
-    #[serde(rename = "Description")]
-    pub description: String,
+    #[serde(rename = "Description", skip_serializing_if = "is_none_or_empty_str")]
+    pub description: Option<String>,
 
-    #[serde(rename = "PasswordHint")]
-    pub password_hint: String,
+    #[serde(rename = "PasswordHint", skip_serializing_if = "is_none_or_empty_str")]
+    pub password_hint: Option<String>,
 
     #[serde(rename = "UrlName")]
     pub url_name: String,
@@ -46,28 +48,27 @@ pub struct Album {
     #[serde(rename = "WebUri")]
     pub web_uri: String,
 
-    #[serde(rename = "WorldSearchable")]
-    pub is_world_searchable: Option<bool>,
+    // #[serde(rename = "WorldSearchable", skip_serializing_if = "is_none_or_empty_str")]
+    // pub is_world_searchable: Option<String>,
 
-    // TODO: Use an ENUM
-    #[serde(rename = "SmugSearchable")]
-    pub is_smug_searchable: Option<String>,
-
-    #[serde(
-        default,
-        rename = "UploadKey",
-        deserialize_with = "from_empty_str_to_none"
-    )]
+    // #[serde(rename = "SmugSearchable", skip_serializing_if = "is_none_or_empty_str")]
+    // pub is_smug_searchable: Option<String>,
+    #[serde(rename = "UploadKey", skip_serializing_if = "is_none_or_empty_str")]
     pub upload_key: Option<String>,
 
     #[serde(rename = "ImageCount")]
     pub image_count: u64,
 
-    #[serde(default, rename = "Privacy", deserialize_with = "from_privacy")]
+    #[serde(
+        default,
+        rename = "Privacy",
+        deserialize_with = "from_privacy",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub privacy: Option<PrivacyLevel>,
 
     // Album specific fields
-    #[serde(rename = "Date")]
+    #[serde(rename = "Date", skip_serializing_if = "Option::is_none")]
     pub date_created: Option<DateTime<Utc>>,
 
     #[serde(rename = "ImagesLastUpdated")]
@@ -76,7 +77,7 @@ pub struct Album {
     #[serde(rename = "LastUpdated")]
     pub last_updated: DateTime<Utc>,
 
-    #[serde(skip_serializing, rename = "Uris")]
+    #[serde(rename = "Uris")]
     uris: AlbumUris,
 }
 
@@ -105,53 +106,39 @@ impl Album {
     }
 
     /// Retrieves information about the images associated with this Album
-    pub fn images(&self) -> impl Stream<Item = Result<Image, SmugMugError>> {
+    pub fn images(&self) -> Result<impl Stream<Item=Result<Image, SmugMugError>>, SmugMugError> {
+        self.images_with_client(
+            self.client.as_ref().ok_or(SmugMugError::ClientNotFound()).unwrap().clone())
+    }
+
+    /// Retrieves information about images associated with this Album using the provided client
+    pub fn images_with_client(
+        &self,
+        client: Client,
+    ) -> Result<impl Stream<Item=Result<Image, SmugMugError>>, SmugMugError> {
         // Build up the query parameters
-        let params = vec![("_verbosity", "1"), ("count", NUM_TO_GET_STRING)];
+        let params: Vec<(&str, &str)> = Vec::new();
 
-        // Page through and retrieve the nodes and return them as a stream.
-        try_stream! {
-            let mut start_idx = 0;
-
-            let req_url = url::Url::parse(API_ORIGIN)?.join(self.uris.album_images.as_str())?;
-
-            loop {
-                let mut params = params.clone();
-                let start_idx_str = start_idx.to_string();
-                params.push(("start", start_idx_str.as_str()));
-
-                let nodes = self.client.get::<AlbumImagesResponse>(
-                    req_url.as_str(), Some(&params)
-                ).await?
-                .payload
-                .ok_or(SmugMugError::ResponseMissing())?
-                .images;
-
-                let is_done = nodes.len() != NUM_TO_GET;
-
-                for mut node in nodes {
-                    node.client = self.client.clone();
-                    yield node
-                }
-
-                if is_done {
-                    break;
-                }
-                start_idx += NUM_TO_GET;
-            }
-        }
+        Ok(stream_children_from_url!(
+            client,
+            self.uris.album_images.as_ref(),
+            &params,
+            AlbumImagesResponse,
+            images
+        ))
     }
 
     async fn update_upload_key(&self, data: Vec<u8>) -> Result<Album, SmugMugError> {
         let params = vec![("_verbosity", "1")];
         let req_url = url::Url::parse(API_ORIGIN)?.join(self.uri.as_str())?;
-        self.client
+        let client = self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?;
+        client
             .patch::<AlbumResponse>(req_url.as_str(), data, Some(&params))
             .await?
             .payload
             .ok_or(SmugMugError::ResponseMissing())
             .map(|mut v| {
-                v.album.client = self.client.clone();
+                v.album.client = Some(client.clone());
                 v.album
             })
     }
@@ -169,11 +156,46 @@ impl Album {
     }
 }
 
+impl PartialEq for Album {
+    fn eq(&self, other: &Self) -> bool {
+        self.album_key == other.album_key
+    }
+}
+impl Eq for Album {}
+
+impl Hash for Album {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        state.write(self.album_key.as_bytes());
+        let _ = state.finish();
+    }
+}
+
+impl PartialOrd for Album {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.album_key.cmp(&other.album_key))
+    }
+}
+
+impl Ord for Album {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.album_key.cmp(&other.album_key)
+    }
+}
+
+impl std::fmt::Display for Album {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "name: {}, id: {}", self.name, self.album_key)
+    }
+}
+
 // Uris returned for a Node
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 struct AlbumUris {
     #[serde(rename = "AlbumImages")]
-    album_images: String,
+    album_images: Option<String>,
     // #[serde(rename = "User")]
     // user: String,
 
@@ -185,7 +207,7 @@ struct AlbumUris {
 }
 
 /// Properties that can be used in the creation of an Album
-#[derive(Serialize, Default, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct CreateAlbumProps {
     #[serde(rename = "Name")]
     pub name: String,
@@ -238,4 +260,7 @@ struct AlbumsResponse {
 struct AlbumImagesResponse {
     #[serde(rename = "AlbumImage")]
     images: Vec<Image>,
+
+    #[serde(rename = "Pages")]
+    pages: Option<Pages>,
 }

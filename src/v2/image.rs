@@ -7,19 +7,21 @@
  */
 use crate::v2::errors::SmugMugError;
 use crate::v2::macros::{obj_from_url, objs_from_id_slice};
-use crate::v2::{API_ORIGIN, Client};
+use crate::v2::{Client, API_ORIGIN};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 
 /// Holds information returned from the AlbumImage/Image API.
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/image.html) for more
 /// details on the individual fields.
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Image {
     #[serde(skip)]
-    pub(crate) client: Client,
+    pub(crate) client: Option<Client>,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -27,17 +29,17 @@ pub struct Image {
     #[serde(rename = "Title")]
     pub name: String,
 
-    #[serde(rename = "Caption")]
-    pub description: String,
+    #[serde(rename = "Caption", skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 
     #[serde(rename = "Altitude")]
     pub altitude: u64,
 
-    #[serde(rename = "Latitude")]
-    pub latitude: String,
+    #[serde(rename = "Latitude", skip_serializing_if = "Option::is_none")]
+    pub latitude: Option<String>,
 
-    #[serde(rename = "Longitude")]
-    pub longitude: String,
+    #[serde(rename = "Longitude", skip_serializing_if = "Option::is_none")]
+    pub longitude: Option<String>,
 
     #[serde(rename = "Format")]
     pub format: String,
@@ -51,13 +53,13 @@ pub struct Image {
     #[serde(rename = "KeywordArray")]
     pub keywords: Vec<String>,
 
-    #[serde(rename = "ArchivedUri")]
+    #[serde(rename = "ArchivedUri", skip_serializing_if = "Option::is_none")]
     pub archived_uri: Option<String>,
 
-    #[serde(rename = "ArchivedMD5")]
+    #[serde(rename = "ArchivedMD5", skip_serializing_if = "Option::is_none")]
     pub archived_md5: Option<String>,
 
-    #[serde(rename = "ArchivedSize")]
+    #[serde(rename = "ArchivedSize", skip_serializing_if = "Option::is_none")]
     pub archived_size: Option<u64>,
 
     #[serde(rename = "Processing")]
@@ -108,7 +110,7 @@ impl Image {
     pub async fn get_archive(&self) -> Result<Bytes, SmugMugError> {
         match self.archived_uri.as_ref() {
             Some(archived_uri) => Ok(self
-                .client
+                .client.as_ref().ok_or(SmugMugError::ClientNotFound())?
                 .get_binary_data(archived_uri, None)
                 .await?
                 .payload
@@ -121,6 +123,41 @@ impl Image {
     }
 }
 
+impl PartialEq for Image {
+    fn eq(&self, other: &Self) -> bool {
+        self.image_key == other.image_key
+    }
+}
+impl Eq for Image {}
+
+impl Hash for Image {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        state.write(self.image_key.as_bytes());
+        let _ = state.finish();
+    }
+}
+
+impl PartialOrd for Image {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.image_key.cmp(&other.image_key))
+    }
+}
+
+impl Ord for Image {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.image_key
+            .cmp(&other.image_key)
+    }
+}
+
+impl std::fmt::Display for Image {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "name: {}, id: {}", self.name, self.image_key)
+    }
+}
 // Expected response for a request to get an Image
 #[derive(Deserialize, Debug)]
 struct ImageResponse {

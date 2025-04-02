@@ -13,15 +13,15 @@ For further details on the Rest API refer to: [SmugMug API Docs](https://api.smu
 
 - Retrieve Basic user information (Read only).
 - Retrieve Node information.
-  - Can create an Album.
-  - List children of a Node.
+    - Can create an Album.
+    - List children of a Node.
 - Retrieve Album information.
-  - Can set the upload key.
-  - Can list the images contained in an Album.
+    - Can set the upload key.
+    - Can list the images contained in an Album.
 - Retrieve Image information.
-  - Download of the archive image supported.
+    - Download of the archive image supported.
 - Lower level interface for handling more direct communication.
-  - Exposes the SmugMug API Rate Limit information.
+    - Exposes the SmugMug API Rate Limit information.
 
 _The SmugMug API uses OAuth1. This library handles the request signing.
 Getting the Access Token/Secret is left up to the consumer of this library_
@@ -68,7 +68,7 @@ where
         NodeTypeFilters::Album,
         SortDirection::Descending,
         SortMethod::Organizer,
-    );
+    )?;
 
     // Iterate over the node children
     pin_mut!(node_children);

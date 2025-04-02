@@ -27,16 +27,7 @@ where
     Ok(PrivacyLevel::from_str(&s).ok().or(Some(PrivacyLevel::Unknown)))
 }
 
-// Parses strings that may be "" and sets to None
-pub fn from_empty_str_to_none
-<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s: String = Deserialize::deserialize(deserializer)?;
-    if s.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(s))
-    }
+// Skips serialization if is none or is some but empty string
+pub fn is_none_or_empty_str(tst: &Option<String>) -> bool {
+    tst.as_ref().filter(|v| !(*v).is_empty()).is_none()
 }

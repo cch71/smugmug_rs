@@ -71,7 +71,7 @@
 //!        NodeTypeFilters::Album,
 //!        SortDirection::Descending,
 //!        SortMethod::Organizer,
-//!    );
+//!    )?;
 //!    // Iterate over the node children
 //!    pin_mut!(node_children);
 //!    while let Some(Ok(child_album_node)) = node_children.next().await {

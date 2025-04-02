@@ -7,7 +7,8 @@
  */
 use crate::v2::errors::SmugMugError;
 use crate::v2::macros::obj_from_url;
-use crate::v2::{API_ORIGIN, Client, Node};
+use crate::v2::parsers::is_none_or_empty_str;
+use crate::v2::{Client, Node, API_ORIGIN};
 use serde::{Deserialize, Serialize};
 
 /// Holds information returned from the User API.
@@ -17,7 +18,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, Debug)]
 pub struct User {
     #[serde(skip)]
-    pub(crate) client: Client,
+    pub(crate) client: Option<Client>,
 
     #[serde(rename = "Uri")]
     pub uri: String,
@@ -25,19 +26,19 @@ pub struct User {
     #[serde(rename = "Name")]
     pub name: String,
 
-    #[serde(rename = "FirstName")]
+    #[serde(rename = "FirstName", skip_serializing_if = "is_none_or_empty_str")]
     pub first_name: Option<String>,
 
-    #[serde(rename = "LastName")]
+    #[serde(rename = "LastName", skip_serializing_if = "is_none_or_empty_str")]
     pub last_name: Option<String>,
 
-    #[serde(rename = "NickName")]
-    pub nick_name: String,
+    #[serde(rename = "NickName", skip_serializing_if = "is_none_or_empty_str")]
+    pub nick_name: Option<String>,
 
-    #[serde(rename = "Plan")]
+    #[serde(rename = "Plan", skip_serializing_if = "is_none_or_empty_str")]
     pub plan: Option<String>,
 
-    #[serde(rename = "TimeZone")]
+    #[serde(rename = "TimeZone", skip_serializing_if = "is_none_or_empty_str")]
     pub time_zone: Option<String>,
 
     #[serde(rename = "WebUri")]
@@ -69,9 +70,18 @@ impl User {
         Self::from_url(client, req_url.as_str()).await
     }
 
+    /// Retrieves the root node information for this user.
+    ///
+    /// NOTE: if this object was deserialized externally this will fail as the internal client
+    /// isn't valid
     pub async fn node(self) -> Result<Node, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?.join(self.uris.node.as_str())?;
-        Node::from_url(self.client, req_url.as_str()).await
+
+        Node::from_url(
+            self.client.ok_or(SmugMugError::ClientNotFound())?.clone(),
+            req_url.as_str(),
+        )
+            .await
     }
 }
 

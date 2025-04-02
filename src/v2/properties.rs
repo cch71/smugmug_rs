@@ -5,7 +5,7 @@
  *  - MIT license <http://opensource.org/licenses/MIT>
  *  at your option.
  */
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use strum_macros::{EnumString, IntoStaticStr};
 
 #[derive(Debug, EnumString, IntoStaticStr)]
@@ -23,7 +23,7 @@ pub enum SortDirection {
     Descending,
 }
 
-#[derive(Debug, Serialize, EnumString, IntoStaticStr)]
+#[derive(Debug, Clone, Serialize, Deserialize, EnumString, IntoStaticStr)]
 pub enum PrivacyLevel {
     Unknown,
     Public,
@@ -31,7 +31,7 @@ pub enum PrivacyLevel {
     Private,
 }
 
-#[derive(Debug, EnumString, IntoStaticStr)]
+#[derive(Debug, Clone, EnumString, Serialize, Deserialize, IntoStaticStr)]
 pub enum NodeTypeFilters {
     Any,
     Album,
@@ -43,7 +43,7 @@ pub enum NodeTypeFilters {
     FolderAlbumPage,
 }
 
-#[derive(Debug, Serialize, EnumString, IntoStaticStr)]
+#[derive(Debug, Clone, Serialize, Deserialize, EnumString, IntoStaticStr)]
 pub enum NodeType {
     Unknown,
     Album,

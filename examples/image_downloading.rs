@@ -10,7 +10,7 @@ extern crate smugmug;
 
 use anyhow::Result;
 use dotenvy::dotenv;
-use futures::{StreamExt, pin_mut};
+use futures::{pin_mut, StreamExt};
 use serde::Deserialize;
 use smugmug::v2::{Album, Client, Creds, Node, NodeTypeFilters, SortDirection, SortMethod, User};
 use std::fs::File;
@@ -21,14 +21,14 @@ use std::path::PathBuf;
 // NOTE: This assumes there are albums at the provided node.
 async fn for_each_album_off_of_node<Fut>(node: Node, album_op: impl Fn(Album) -> Fut) -> Result<()>
 where
-    Fut: Future<Output = Result<bool>>,
+    Fut: Future<Output=Result<bool>>,
 {
     // Retrieve the Albums under the root node
     let node_children = node.children(
         NodeTypeFilters::Album,
         SortDirection::Descending,
         SortMethod::Organizer,
-    );
+    )?;
 
     // Iterate over the node children
     pin_mut!(node_children);
@@ -50,7 +50,7 @@ where
 // Retrieve the list of images in an album and download the first one found
 // NOTE: the authenticated user should have an album that allows downloads for this to work.
 async fn retrieve_first_image_from_album(album: Album) -> Result<bool> {
-    let images = album.images();
+    let images = album.images()?;
 
     // No images so keep looking
     if album.image_count == 0 {

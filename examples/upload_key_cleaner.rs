@@ -11,7 +11,7 @@ extern crate smugmug;
 use anyhow::Result;
 use chrono::{Duration, Utc};
 use dotenvy::dotenv;
-use futures::{StreamExt, pin_mut};
+use futures::{pin_mut, StreamExt};
 use serde::Deserialize;
 use smugmug::v2::{Album, Client, Creds, NodeTypeFilters, SortDirection, SortMethod, User};
 use std::fs::File;
@@ -26,7 +26,7 @@ async fn iterate_albums<Fut>(
     album_op: impl Fn(Album) -> Fut,
 ) -> Result<()>
 where
-    Fut: Future<Output = Result<bool>>,
+    Fut: Future<Output=Result<bool>>,
 {
     // The API key/secret is obtained from your SmugMug account
     // The API key is the only required field for accessing public accounts
@@ -49,7 +49,7 @@ where
         NodeTypeFilters::Album,
         SortDirection::Descending,
         SortMethod::Organizer,
-    );
+    )?;
 
     // Iterate over the node children
     pin_mut!(node_children);
@@ -83,6 +83,8 @@ fn get_smugmug_tokens(path: PathBuf) -> Result<SmugMugOauth1Token> {
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv().ok();
+    env_logger::init();
+
     let api_key = std::env::var("SMUGMUG_API_KEY")?;
     let api_secret = std::env::var("SMUGMUG_API_SECRET")?;
     let token_cache = std::env::var("SMUGMUG_AUTH_CACHE")?;
@@ -96,7 +98,7 @@ async fn main() -> Result<()> {
     let cleaner = async |album_info: Album| {
         // Because of query sort order we can stop as soon as we get an album that doesn't have
         // a key
-        if album_info.upload_key.is_none() {
+        if album_info.upload_key.as_ref().filter(|v| !v.is_empty()).is_none() {
             return Ok(false);
         }
 
@@ -104,7 +106,7 @@ async fn main() -> Result<()> {
         if cutoff_from_date_created_dt > album_info.date_created.unwrap()
             || last_updated_cutoff_dt > album_info.last_updated
         {
-            println!(
+            log::info!(
                 "Album to remove upload key Name: {} Image Count: {} {}",
                 &album_info.name,
                 &album_info.image_count,
@@ -114,7 +116,7 @@ async fn main() -> Result<()> {
                     .map_or("".to_string(), |v| format!("Upload Key: {}", v)),
             );
             let album_info = album_info.clear_upload_key().await.unwrap();
-            println!("Removed Upload Key From: {:?}", album_info);
+            log::info!("Removed Upload Key From: {:?}", album_info);
         }
         Ok(true)
     };
@@ -128,6 +130,6 @@ async fn main() -> Result<()> {
         &tokens.secret,
         cleaner,
     )
-    .await?;
+        .await?;
     Ok(())
 }

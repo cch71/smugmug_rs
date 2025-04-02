@@ -8,23 +8,16 @@
 use crate::v2::errors::SmugMugError;
 use bytes::Bytes;
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use const_format::formatcp;
 use num_enum::TryFromPrimitive;
-use reqwest::Response as ReqwestResponse;
 use reqwest::header::HeaderMap;
+use reqwest::Response as ReqwestResponse;
 use reqwest_oauth1::{OAuthClientProvider, SecretsProvider};
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use std::sync::{Arc, RwLock};
 
 // Root SmugMug API
 pub(crate) const API_ORIGIN: &str = "https://api.smugmug.com";
-
-// When retrieving pages this is the default records to retrieve
-pub(crate) const NUM_TO_GET: usize = 25;
-
-// String representation of default number of records to retrieve
-pub(crate) const NUM_TO_GET_STRING: &str = formatcp!("{}", NUM_TO_GET);
 
 /// Handles the lower level communication with the SmugMug REST API.
 #[derive(Default, Clone)]
@@ -178,7 +171,7 @@ impl ClientRef {
                 payload: Some(body),
                 rate_limit: None,
             }),
-            Err(err) => Err(SmugMugError::ApiResponseMalformed(err)),
+            Err(err) => Err(err.into()),
         }
     }
 
@@ -270,8 +263,11 @@ impl ClientRef {
         // Check if the http error code returned was an error
         self.error_on_http_status(&resp, Some(&rate_limit))?;
 
+        // get the payload bytes
+        let payload_bytes = resp.bytes().await?;
+
         // Pull out the payload
-        match resp.json::<ResponseBody<T>>().await {
+        match serde_json::from_slice::<ResponseBody<T>>(payload_bytes.as_ref()) {
             Ok(body) => {
                 if !body.is_code_an_error()? {
                     return Err(SmugMugError::ApiResponse(body.code, body.message));
@@ -281,7 +277,12 @@ impl ClientRef {
                     rate_limit: Some(rate_limit),
                 })
             }
-            Err(err) => Err(SmugMugError::ApiResponseMalformed(err)),
+            Err(err) => {
+                if log::log_enabled!(log::Level::Debug) {
+                    log::debug!("Payload parse error: {}", String::from_utf8(payload_bytes.to_vec()).unwrap());
+                }
+                Err(SmugMugError::ApiResponseMalformed(err))
+            }
         }
     }
 
@@ -301,7 +302,9 @@ impl ClientRef {
                 [("APIKey", &self.creds.consumer_api_key)],
             )?;
         }
-
+        if log::log_enabled!(log::Level::Trace) {
+            log::trace!("Outgoing request url: {}", req_url.as_str());
+        }
         Ok(req_url)
     }
 }
@@ -515,4 +518,29 @@ impl<ResponseType> ResponseBody<ResponseType> {
             _ => Ok(false),
         }
     }
+}
+
+// Used for handling retrieval of pages for multi page requests
+#[derive(Deserialize, Debug)]
+pub(crate) struct Pages {
+    // #[serde(rename = "Total")]
+    // pub(crate) total: u64,
+
+    // #[serde(rename = "Start")]
+    // pub(crate) start: u64,
+
+    // #[serde(rename = "Count")]
+    // pub(crate) count: u64,
+
+    // #[serde(rename = "RequestedCount")]
+    // pub(crate) requested_count: u64,
+
+    // #[serde(rename = "FirstPage")]
+    // pub(crate) first_path: String,
+
+    // #[serde(rename = "LastPage")]
+    // pub(crate) last_page: String,
+
+    #[serde(rename = "NextPage")]
+    pub(crate) next_page: Option<String>,
 }
