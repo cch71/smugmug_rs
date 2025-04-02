@@ -11,16 +11,16 @@ use smugmug::v2::Client;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
-use std::sync::{Once, OnceLock};
+use std::sync::Once;
 
 #[allow(dead_code)]
 static LOGGER_INIT: Once = Once::new();
 
-#[allow(dead_code)]
-static FULL_CREDS_CLIENT: OnceLock<Client> = OnceLock::new();
-
-#[allow(dead_code)]
-static READ_ONLY_CREDS_CLIENT: OnceLock<Client> = OnceLock::new();
+// #[allow(dead_code)]
+// static FULL_CREDS_CLIENT: OnceLock<Client> = OnceLock::new();
+//
+// #[allow(dead_code)]
+// static READ_ONLY_CREDS_CLIENT: OnceLock<Client> = OnceLock::new();
 
 #[derive(Deserialize, Debug)]
 struct SmugMugOauth1Token {
@@ -68,16 +68,20 @@ fn init_logger_and_env() {
 #[allow(dead_code)]
 pub(crate) fn get_full_client() -> Client {
     LOGGER_INIT.call_once(init_logger_and_env);
-    FULL_CREDS_CLIENT.get_or_init(|| {
-        let creds = get_full_auth_tokens().unwrap();
-        Client::new(creds)
-    }).clone()
+    // FULL_CREDS_CLIENT.get_or_init(|| {
+    //     let creds = get_full_auth_tokens().unwrap();
+    //     Client::new(creds)
+    // }).clone()
+    let creds = get_full_auth_tokens().unwrap();
+    Client::new(creds)
 }
 #[allow(dead_code)]
 pub(crate) fn get_read_only_client() -> Client {
     LOGGER_INIT.call_once(init_logger_and_env);
-    READ_ONLY_CREDS_CLIENT.get_or_init(|| {
-        let creds = get_read_only_auth_tokens().unwrap();
-        Client::new(creds)
-    }).clone()
+    // READ_ONLY_CREDS_CLIENT.get_or_init(|| {
+    //     let creds = get_read_only_auth_tokens().unwrap();
+    //     Client::new(creds)
+    // }).clone()
+    let creds = get_read_only_auth_tokens().unwrap();
+    Client::new(creds)
 }
