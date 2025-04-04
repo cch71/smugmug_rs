@@ -107,19 +107,24 @@ impl Image {
     }
 
     /// Retrieves the image data found at the archive uri
-    pub async fn get_archive(&self) -> Result<Bytes, SmugMugError> {
+    pub async fn get_archive_with_client(&self, client: Client) -> Result<Bytes, SmugMugError> {
         match self.archived_uri.as_ref() {
-            Some(archived_uri) => Ok(self
-                .client.as_ref().ok_or(SmugMugError::ClientNotFound())?
-                .get_binary_data(archived_uri, None)
-                .await?
-                .payload
-                .unwrap()),
+            Some(archived_uri) => Ok(
+                client
+                    .get_binary_data(archived_uri, None)
+                    .await?
+                    .payload
+                    .unwrap()),
             None => Err(SmugMugError::ImageArchiveNotFound(
                 self.file_name.clone(),
                 self.image_key.clone(),
             )),
         }
+    }
+
+    pub async fn get_archive(&self) -> Result<Bytes, SmugMugError> {
+        self.get_archive_with_client(
+            self.client.as_ref().ok_or(SmugMugError::ClientNotFound()).unwrap().clone()).await
     }
 }
 

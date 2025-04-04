@@ -33,6 +33,9 @@ pub struct Album {
     #[serde(rename = "AlbumKey")]
     pub album_key: String,
 
+    #[serde(rename = "AllowDownloads")]
+    pub do_allow_downloads: bool,
+
     #[serde(rename = "Name")]
     pub name: String,
 
@@ -53,11 +56,18 @@ pub struct Album {
 
     // #[serde(rename = "SmugSearchable", skip_serializing_if = "is_none_or_empty_str")]
     // pub is_smug_searchable: Option<String>,
+
     #[serde(rename = "UploadKey", skip_serializing_if = "is_none_or_empty_str")]
     pub upload_key: Option<String>,
 
     #[serde(rename = "ImageCount")]
     pub image_count: u64,
+
+    #[serde(rename = "TotalSizes")]
+    pub total_sizes: Option<u64>,
+
+    #[serde(rename = "OriginalSizes")]
+    pub original_sizes: Option<u64>,
 
     #[serde(
         default,
