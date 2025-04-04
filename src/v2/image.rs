@@ -160,7 +160,7 @@ impl Ord for Image {
 
 impl std::fmt::Display for Image {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "name: {}, id: {}", self.name, self.image_key)
+        write!(f, "name: {}, filename: {} id: {}", self.name, self.file_name, self.image_key)
     }
 }
 // Expected response for a request to get an Image
