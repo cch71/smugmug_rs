@@ -125,7 +125,7 @@ impl Node {
         let album_id_segment = req_url
             .path_segments()
             .ok_or(SmugMugError::NotAnAlbum())?
-            .last()
+            .next_back()
             .ok_or(SmugMugError::NotAnAlbum())?;
         Ok(album_id_segment.to_string())
     }
