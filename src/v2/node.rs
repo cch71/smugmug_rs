@@ -130,15 +130,14 @@ impl Node {
         Ok(album_id_segment.to_string())
     }
 
-    /// Creates album off this node
-    pub async fn create_album(&self, album_props: CreateAlbumProps) -> Result<Album, SmugMugError> {
+    /// Creates album off this node using the given client
+    pub async fn create_album_with_client(&self, client: Client, album_props: CreateAlbumProps) -> Result<Album, SmugMugError> {
         let children_uri = self.uris.child_nodes.as_ref().unwrap(); //Should always be true right?
         let req_url = url::Url::parse(API_ORIGIN)?.join(children_uri)?;
         let params = vec![("_verbosity", "1")];
 
         let data = serde_json::to_vec(&album_props)?;
 
-        let client = self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?;
         client
             .post::<AlbumResponse>(req_url.as_str(), data, Some(&params))
             .await?
@@ -148,6 +147,13 @@ impl Node {
                 v.album.client = Some(client.clone());
                 v.album
             })
+    }
+
+
+    /// Creates album off this node
+    pub async fn create_album(&self, album_props: CreateAlbumProps) -> Result<Album, SmugMugError> {
+        let client = self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?.clone();
+        self.create_album_with_client(client, album_props).await
     }
 
     /// Retrieves the Child Nodes information for this Node

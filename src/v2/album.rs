@@ -138,10 +138,9 @@ impl Album {
         ))
     }
 
-    async fn update_upload_key(&self, data: Vec<u8>) -> Result<Album, SmugMugError> {
+    async fn update_upload_key_with_client(&self, client: Client, data: Vec<u8>) -> Result<Album, SmugMugError> {
         let params = vec![("_verbosity", "1")];
         let req_url = url::Url::parse(API_ORIGIN)?.join(self.uri.as_str())?;
-        let client = self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?;
         client
             .patch::<AlbumResponse>(req_url.as_str(), data, Some(&params))
             .await?
@@ -153,16 +152,29 @@ impl Album {
             })
     }
 
+    /// Clear the upload key on this Album with the provided client
+    pub async fn clear_upload_key_with_client(&self, client: Client) -> Result<Album, SmugMugError> {
+        let data = serde_json::to_vec(&json!({"UploadKey": ""}))?;
+        self.update_upload_key_with_client(client, data).await
+    }
+
     /// Clear the upload key on this Album
     pub async fn clear_upload_key(&self) -> Result<Album, SmugMugError> {
+        let client = self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?.clone();
         let data = serde_json::to_vec(&json!({"UploadKey": ""}))?;
-        self.update_upload_key(data).await
+        self.update_upload_key_with_client(client, data).await
+    }
+
+    /// Set the upload key for this Album
+    pub async fn set_upload_key_with_client(&self, client: Client, upload_key: &str) -> Result<Album, SmugMugError> {
+        let data = serde_json::to_vec(&json!({"UploadKey": upload_key}))?;
+        self.update_upload_key_with_client(client, data).await
     }
 
     /// Set the upload key for this Album
     pub async fn set_upload_key(&self, upload_key: &str) -> Result<Album, SmugMugError> {
-        let data = serde_json::to_vec(&json!({"UploadKey": upload_key}))?;
-        self.update_upload_key(data).await
+        let client = self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?.clone();
+        self.set_upload_key_with_client(client, upload_key).await
     }
 }
 
