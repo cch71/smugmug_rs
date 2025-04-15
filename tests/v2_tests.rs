@@ -39,6 +39,24 @@ mod test {
         log::debug!("User info: {:?}", user_info);
     }
 
+    #[ignore]
+    #[tokio::test]
+    async fn getting_info_using_full_creds() {
+        let client = get_full_client();
+        let user_info = User::authenticated_user_info(client.clone()).await.unwrap();
+        assert!(client.get_last_rate_limit_window_update().is_some());
+        println!("User info: {:?}", user_info);
+
+        // Uses Troop 27 Album
+        let album_info = Album::from_id(client.clone(), "rxLLKT").await.unwrap();
+        println!("Album info: {:?}", album_info);
+
+        // Uses Troop 27 Image
+        // The album key is StG5THQ but to get the information you need the -0 from the URI or Image Uri
+        let image_info = Image::from_id(client.clone(), "StG5THQ-0").await.unwrap();
+        println!("Image info: {:?}", image_info);
+    }
+
     #[tokio::test]
     async fn node_from_id_and_children() {
         let client = get_read_only_client();

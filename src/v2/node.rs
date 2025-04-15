@@ -6,7 +6,7 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
-use crate::v2::macros::{obj_from_url, objs_from_id_slice, stream_children_from_url};
+use crate::v2::macros::{obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice, stream_children_from_url};
 use crate::v2::parsers::{from_node_type, from_privacy, is_none_or_empty_str};
 use crate::v2::{
     Album, AlbumResponse, Client, CreateAlbumProps, NodeType, NodeTypeFilters, Pages, PrivacyLevel,
@@ -104,6 +104,19 @@ impl Node {
         id_list: &[&str],
     ) -> Result<Vec<Self>, SmugMugError> {
         objs_from_id_slice!(client, id_list, Self::BASE_URI, NodesResponse, nodes)
+    }
+
+    /// Updates this nodes data fields
+    pub async fn update_node_data_with_client(&self, client: Client, data: Vec<u8>) -> Result<Node, SmugMugError> {
+        obj_update_from_uri!(client, self.uri.as_str(), data, NodeResponse, node)
+    }
+
+    /// Updates data for the provided Node id using the given client
+    pub async fn update_node_data_with_client_from_id(client: Client, data: Vec<u8>, id: &str) -> Result<Node, SmugMugError> {
+        let req_url = url::Url::parse(API_ORIGIN)?
+            .join(Self::BASE_URI)?
+            .join(id)?;
+        obj_update_from_url!(client, req_url.as_str(), data, NodeResponse, node)
     }
 
     /// Retrieves the Album specific information about this Node

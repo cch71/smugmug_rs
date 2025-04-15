@@ -6,7 +6,7 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
-use crate::v2::macros::{obj_from_url, objs_from_id_slice};
+use crate::v2::macros::{obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice};
 use crate::v2::{Client, API_ORIGIN};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -104,6 +104,19 @@ impl Image {
         id_list: &[&str],
     ) -> Result<Vec<Self>, SmugMugError> {
         objs_from_id_slice!(client, id_list, Self::BASE_URI, ImagesResponse, images)
+    }
+
+    /// Updates this Image data fields
+    pub async fn update_image_data_with_client(&self, client: Client, data: Vec<u8>) -> Result<Image, SmugMugError> {
+        obj_update_from_uri!(client, self.uri.as_str(), data, ImageResponse, image)
+    }
+
+    /// Updates data for the provided image id using the given client
+    pub async fn update_image_data_with_client_from_id(client: Client, data: Vec<u8>, id: &str) -> Result<Image, SmugMugError> {
+        let req_url = url::Url::parse(API_ORIGIN)?
+            .join(Self::BASE_URI)?
+            .join(id)?;
+        obj_update_from_url!(client, req_url.as_str(), data, ImageResponse, image)
     }
 
     /// Retrieves the image data found at the archive uri

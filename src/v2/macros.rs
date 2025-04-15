@@ -20,6 +20,27 @@ macro_rules! obj_from_url {
     }};
 }
 
+macro_rules! obj_update_from_url {
+    ( $c:expr, $url: expr, $d: expr,$rt: ty, $r: ident) => {{
+        let params = vec![("_verbosity", "1")];
+        $c.patch::<$rt>($url, $d, Some(&params))
+            .await?
+            .payload
+            .ok_or(SmugMugError::ResponseMissing())
+            .map(|mut v| {
+                v.$r.client = Some($c.clone());
+                v.$r
+            })
+    }};
+}
+
+macro_rules! obj_update_from_uri {
+    ( $c:expr, $uri: expr, $d: expr,$rt: ty, $r: ident) => {{
+        let req_url = url::Url::parse(API_ORIGIN)?.join($uri)?;
+        obj_update_from_url!($c, req_url.as_str(), $d, $rt, $r)
+    }};
+}
+
 macro_rules! objs_from_id_slice {
     ( $c:expr, $ids:expr, $uri:expr, $rt: ty, $r: ident) => {{
         if $ids.is_empty() {
@@ -76,4 +97,4 @@ macro_rules! stream_children_from_url {
     }};
 }
 
-pub(crate) use {obj_from_url, objs_from_id_slice, stream_children_from_url};
+pub(crate) use {obj_from_url, objs_from_id_slice, stream_children_from_url, obj_update_from_uri, obj_update_from_url};
