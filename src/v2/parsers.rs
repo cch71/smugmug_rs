@@ -24,7 +24,9 @@ where
     D: serde::Deserializer<'de>,
 {
     let s: String = Deserialize::deserialize(deserializer)?;
-    Ok(PrivacyLevel::from_str(&s).ok().or(Some(PrivacyLevel::Unknown)))
+    Ok(PrivacyLevel::from_str(&s)
+        .ok()
+        .or(Some(PrivacyLevel::Unknown)))
 }
 
 // Skips serialization if is none or is some but empty string

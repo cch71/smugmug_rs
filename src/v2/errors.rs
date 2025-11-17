@@ -20,8 +20,8 @@ pub enum SmugMugError {
     #[error("Request network error")]
     Request(#[from] reqwest::Error),
 
-    #[error("Authorization error")]
-    Auth(#[from] reqwest_oauth1::Error),
+    #[error("Authorization error. {0}")]
+    Auth(String),
 
     #[error("Deserialization error")]
     Deserialization(#[from] serde_json::Error),
@@ -52,4 +52,7 @@ pub enum SmugMugError {
 
     #[error("API Response is malformed: {0:?}")]
     ApiResponseMalformed(serde_json::Error),
+
+    #[error("Failed serializing to JSON: {0}")]
+    JsonSerialization(String),
 }

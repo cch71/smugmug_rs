@@ -10,7 +10,7 @@ extern crate smugmug;
 
 use anyhow::Result;
 use dotenvy::dotenv;
-use futures::{pin_mut, StreamExt};
+use futures::{StreamExt, pin_mut};
 use serde::Deserialize;
 use smugmug::v2::{Album, Client, Creds, Node, NodeTypeFilters, SortDirection, SortMethod, User};
 use std::fs::File;
@@ -21,7 +21,7 @@ use std::path::PathBuf;
 // NOTE: This assumes there are albums at the provided node.
 async fn for_each_album_off_of_node<Fut>(node: Node, album_op: impl Fn(Album) -> Fut) -> Result<()>
 where
-    Fut: Future<Output=Result<bool>>,
+    Fut: Future<Output = Result<bool>>,
 {
     // Retrieve the Albums under the root node
     let node_children = node.children(

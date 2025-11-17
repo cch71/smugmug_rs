@@ -6,16 +6,20 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
-use crate::v2::macros::{obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice, stream_children_from_url};
+use crate::v2::macros::{
+    obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice,
+    stream_children_from_url,
+};
 use crate::v2::parsers::{from_node_type, from_privacy, is_none_or_empty_str};
 use crate::v2::{
-    Album, AlbumResponse, Client, CreateAlbumProps, NodeType, NodeTypeFilters, Pages, PrivacyLevel,
-    SortDirection, SortMethod, API_ORIGIN,
+    Album, Client, CreateAlbumProps, NodeType, NodeTypeFilters, Pages, PrivacyLevel, SortDirection,
+    SortMethod, API_ORIGIN,
 };
 use async_stream::try_stream;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
@@ -107,12 +111,20 @@ impl Node {
     }
 
     /// Updates this nodes data fields
-    pub async fn update_node_data_with_client(&self, client: Client, data: Vec<u8>) -> Result<Node, SmugMugError> {
+    pub async fn update_node_data_with_client(
+        &self,
+        client: Client,
+        data: Vec<u8>,
+    ) -> Result<Node, SmugMugError> {
         obj_update_from_uri!(client, self.uri.as_str(), data, NodeResponse, node)
     }
 
     /// Updates data for the provided Node id using the given client
-    pub async fn update_node_data_with_client_from_id(client: Client, data: Vec<u8>, id: &str) -> Result<Node, SmugMugError> {
+    pub async fn update_node_data_with_client_from_id(
+        client: Client,
+        data: Vec<u8>,
+        id: &str,
+    ) -> Result<Node, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join(Self::BASE_URI)?
             .join(id)?;
@@ -125,7 +137,10 @@ impl Node {
         let req_url = url::Url::parse(API_ORIGIN)?.join(album_uri)?;
 
         Album::from_url(
-            self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?.clone(),
+            self.client
+                .as_ref()
+                .ok_or(SmugMugError::ClientNotFound())?
+                .clone(),
             req_url.as_str(),
         )
             .await
@@ -144,28 +159,43 @@ impl Node {
     }
 
     /// Creates album off this node using the given client
-    pub async fn create_album_with_client(&self, client: Client, album_props: CreateAlbumProps) -> Result<Album, SmugMugError> {
+    pub async fn create_album_with_client(
+        &self,
+        client: Client,
+        album_props: CreateAlbumProps,
+    ) -> Result<Album, SmugMugError> {
         let children_uri = self.uris.child_nodes.as_ref().unwrap(); //Should always be true right?
         let req_url = url::Url::parse(API_ORIGIN)?.join(children_uri)?;
         let params = vec![("_verbosity", "1")];
 
+        let mut album_props: serde_json::Value = serde_json::to_value(&album_props)?;
+        album_props
+            .as_object_mut()
+            .ok_or(SmugMugError::JsonSerialization(
+                "Album Props is not a JSON object".to_string(),
+            ))?
+            .insert("Type".to_string(), json!("Album"));
         let data = serde_json::to_vec(&album_props)?;
 
-        client
-            .post::<AlbumResponse>(req_url.as_str(), data, Some(&params))
+        let node = client
+            .post::<NodeResponse>(req_url.as_str(), data, Some(&params))
             .await?
             .payload
             .ok_or(SmugMugError::ResponseMissing())
             .map(|mut v| {
-                v.album.client = Some(client.clone());
-                v.album
-            })
+                v.node.client = Some(client.clone());
+                v.node
+            })?;
+        node.album().await
     }
 
-
-    /// Creates album off this node
+    /// Creates an album off this node
     pub async fn create_album(&self, album_props: CreateAlbumProps) -> Result<Album, SmugMugError> {
-        let client = self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?.clone();
+        let client = self
+            .client
+            .as_ref()
+            .ok_or(SmugMugError::ClientNotFound())?
+            .clone();
         self.create_album_with_client(client, album_props).await
     }
 
@@ -177,7 +207,10 @@ impl Node {
         sort_method: SortMethod,
     ) -> Result<impl Stream<Item=Result<Node, SmugMugError>>, SmugMugError> {
         self.children_with_client(
-            self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?.clone(),
+            self.client
+                .as_ref()
+                .ok_or(SmugMugError::ClientNotFound())?
+                .clone(),
             filter_by_type,
             sort_direction,
             sort_method,

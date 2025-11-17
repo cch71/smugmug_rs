@@ -8,14 +8,17 @@
 
 mod helpers;
 
-
 #[cfg(test)]
 mod test {
     use crate::helpers::{get_full_client, get_read_only_client};
     use chrono::Utc;
-    use futures::{pin_mut, StreamExt};
+    use futures::{StreamExt, pin_mut};
+    use rand::Rng;
+    use rand::distr::Alphanumeric;
+    use serde_json::json;
     use smugmug::v2::{
-        Album, Image, Node, NodeTypeFilters, SortDirection, SortMethod, User,
+        Album, CreateAlbumProps, Image, Node, NodeTypeFilters, PrivacyLevel, SortDirection,
+        SortMethod, User,
     };
 
     #[tokio::test]
@@ -57,17 +60,59 @@ mod test {
         println!("Image info: {:?}", image_info);
     }
 
+    #[ignore]
+    #[tokio::test]
+    async fn creating_album_using_full_creds() {
+        let client = get_full_client();
+        let user_info = User::authenticated_user_info(client.clone()).await.unwrap();
+        assert!(client.get_last_rate_limit_window_update().is_some());
+        println!("User info: {:?}", user_info);
+
+        // Creates this off of Troop 27's node
+        let root_node = user_info.node().await.unwrap();
+        let album = root_node
+            .create_album(CreateAlbumProps {
+                name: "Test Album".to_string(),
+                privacy: Some(PrivacyLevel::Public),
+                upload_key: Some("Stuffings".to_string()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let upload_key: String = rand::rng()
+            .sample_iter(Alphanumeric)
+            .take(32) // Generates a 32-character long nonce
+            .map(char::from)
+            .collect();
+
+        let album = album.set_upload_key(&upload_key).await.unwrap();
+
+        let album_update_props = serde_json::to_vec(&json!({
+            "AllowDownloads": true,
+            "UploadKey": upload_key,
+        }))
+        .unwrap();
+        let album = album
+            .update_album_data_fields(album_update_props)
+            .await
+            .unwrap();
+
+        println!("Album info: {album:?}");
+    }
+
     #[tokio::test]
     async fn node_from_id_and_children() {
         let client = get_read_only_client();
         // Using API Demo root node id
         let node_info = Node::from_id(client.clone(), "2StTX5").await.unwrap();
         log::debug!("Node info: {:?}", node_info);
-        let node_children = node_info.children(
-            NodeTypeFilters::Any,
-            SortDirection::Ascending,
-            SortMethod::DateAdded,
-        ).unwrap();
+        let node_children = node_info
+            .children(
+                NodeTypeFilters::Any,
+                SortDirection::Ascending,
+                SortMethod::DateAdded,
+            )
+            .unwrap();
 
         // Iterate over the node children
         let mut node_count: u64 = 0;
@@ -85,11 +130,13 @@ mod test {
         // Using Troop 27 root node
         let node_info = Node::from_id(client.clone(), "67t8MV").await.unwrap();
         log::debug!("Node info: {:?}", node_info);
-        let node_children = node_info.children(
-            NodeTypeFilters::Any,
-            SortDirection::Ascending,
-            SortMethod::DateAdded,
-        ).unwrap();
+        let node_children = node_info
+            .children(
+                NodeTypeFilters::Any,
+                SortDirection::Ascending,
+                SortMethod::DateAdded,
+            )
+            .unwrap();
 
         // Iterate over the node children
         let mut node_count: u64 = 0;
@@ -101,7 +148,6 @@ mod test {
         assert!(node_count > 150);
         assert!(node_info.has_children && node_count > 0);
     }
-
 
     #[tokio::test]
     async fn get_album_id_from_node_id() {
@@ -159,7 +205,6 @@ mod test {
         assert!(image_count > 150);
         assert_eq!(album_info.image_count, image_count);
     }
-
 
     #[tokio::test]
     async fn get_multiple_albums() {

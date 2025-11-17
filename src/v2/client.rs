@@ -6,15 +6,23 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
+use base64::prelude::*;
 use bytes::Bytes;
 use chrono::{DateTime, Duration, TimeZone, Utc};
+use hmac::{Hmac, Mac};
 use num_enum::TryFromPrimitive;
-use reqwest::header::HeaderMap;
+use rand::Rng;
+use rand::distr::Alphanumeric;
 use reqwest::Response as ReqwestResponse;
-use reqwest_oauth1::{OAuthClientProvider, SecretsProvider};
-use serde::de::DeserializeOwned;
+use reqwest::header::HeaderMap;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
+use sha1::Sha1;
+use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
+use urlencoding::encode as url_encode;
+
+type HmacSha1 = Hmac<Sha1>;
 
 // Root SmugMug API
 pub(crate) const API_ORIGIN: &str = "https://api.smugmug.com";
@@ -120,12 +128,13 @@ impl ClientRef {
 
         // If we are in read-only mode we have to do this a little different.  Since other functions
         // require Oauth1 singing, this is only needed for get.
-        let resp = if self.creds.get_token_pair_option().is_some() {
+        let resp = if self.creds.are_all_tokens_available() {
+            let auth_header = self.creds.create_oauth1_header("GET", &req_url)?;
             self.https_client
                 .clone()
-                .oauth1(self.creds.clone())
                 .get(req_url)
                 .header("Accept", "application/json")
+                .header("Authorization", auth_header)
                 .send()
                 .await?
         } else {
@@ -149,11 +158,12 @@ impl ClientRef {
 
         // If we are in read-only mode we have to do this a little different.  Since other functions
         // require Oauth1 singing, this is only needed for get.
-        let resp = if self.creds.get_token_pair_option().is_some() {
+        let resp = if self.creds.are_all_tokens_available() {
+            let auth_header = self.creds.create_oauth1_header("GET", &req_url)?;
             self.https_client
                 .clone()
-                .oauth1(self.creds.clone())
                 .get(req_url)
+                .header("Authorization", auth_header)
                 .send()
                 .await?
         } else {
@@ -183,13 +193,14 @@ impl ClientRef {
         params: Option<&ApiParams<'_>>,
     ) -> Result<Response<T>, SmugMugError> {
         let req_url = self.create_req(url, params)?;
+        let auth_header = self.creds.create_oauth1_header("PATCH", &req_url)?;
         let resp = self
             .https_client
             .clone()
-            .oauth1(self.creds.clone())
             .patch(req_url)
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
+            .header("Authorization", auth_header)
             .body(data)
             .send()
             .await?;
@@ -204,13 +215,14 @@ impl ClientRef {
         params: Option<&ApiParams<'_>>,
     ) -> Result<Response<T>, SmugMugError> {
         let req_url = self.create_req(url, params)?;
+        let auth_header = self.creds.create_oauth1_header("POST", &req_url)?;
         let resp = self
             .https_client
             .clone()
-            .oauth1(self.creds.clone())
             .post(req_url)
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
+            .header("Authorization", auth_header)
             .body(data)
             .send()
             .await?;
@@ -266,6 +278,12 @@ impl ClientRef {
         // get the payload bytes
         let payload_bytes = resp.bytes().await?;
 
+        if log::log_enabled!(log::Level::Debug) {
+            if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&payload_bytes) {
+                log::debug!("JSON Raw Resp: {}", serde_json::to_string_pretty(&val)?);
+            }
+        }
+
         // Pull out the payload
         match serde_json::from_slice::<ResponseBody<T>>(payload_bytes.as_ref()) {
             Ok(body) => {
@@ -279,7 +297,10 @@ impl ClientRef {
             }
             Err(err) => {
                 if log::log_enabled!(log::Level::Debug) {
-                    log::debug!("Payload parse error: {}", String::from_utf8(payload_bytes.to_vec()).unwrap());
+                    log::debug!(
+                        "Payload parse error: {}",
+                        String::from_utf8(payload_bytes.to_vec()).unwrap()
+                    );
                 }
                 Err(SmugMugError::ApiResponseMalformed(err))
             }
@@ -448,6 +469,107 @@ impl Creds {
             token_secret: token_secret.map(|v| v.into()),
         }
     }
+
+    fn are_all_tokens_available(&self) -> bool {
+        !self.consumer_api_key.is_empty()
+            && self.consumer_api_secret.is_some()
+            && self.access_token.is_some()
+            && self.token_secret.is_some()
+    }
+
+    fn create_oauth1_header(
+        &self,
+        method: &str,
+        url: &reqwest::Url,
+    ) -> Result<String, SmugMugError> {
+        let access_token = self
+            .access_token
+            .as_ref()
+            .ok_or(SmugMugError::Auth("Access token not found".to_string()))?;
+        let consumer_api_secret = self
+            .consumer_api_secret
+            .as_ref()
+            .ok_or(SmugMugError::Auth("Consumer secret not found".to_string()))?;
+        let token_secret = self
+            .token_secret
+            .as_ref()
+            .ok_or(SmugMugError::Auth("Token secret not found".to_string()))?;
+
+        // 1. Generate nonce and timestamp
+        let timestamp = Utc::now().timestamp().to_string();
+        let nonce: String = rand::rng()
+            .sample_iter(Alphanumeric)
+            .take(32) // Generates a 32-character long nonce
+            .map(char::from)
+            .collect();
+
+        // 2. Collect OAuth parameters
+        let mut oauth_params: BTreeMap<&str, &str> = BTreeMap::new();
+        oauth_params.insert("oauth_consumer_key", &self.consumer_api_key);
+        oauth_params.insert("oauth_nonce", &nonce);
+        oauth_params.insert("oauth_signature_method", "HMAC-SHA1");
+        oauth_params.insert("oauth_timestamp", &timestamp);
+        oauth_params.insert("oauth_token", access_token);
+        oauth_params.insert("oauth_version", "1.0");
+
+        // Merge additional parameters (query/body) for signature base string generation
+        let mut all_params = oauth_params.clone();
+        let extra_params = url.query_pairs().into_owned().collect::<BTreeMap<_, _>>();
+        for (key, value) in &extra_params {
+            all_params.insert(key, value);
+        }
+
+        // 1. Sort all parameters alphabetically by key
+        let parameter_string = all_params
+            .iter()
+            .map(|(key, value)| format!("{}={}", url_encode(key), url_encode(value)))
+            .collect::<Vec<String>>()
+            .join("&");
+
+        // 2. Create the signature base string
+
+        // The result is the clean URL required by the OAuth 1.0a spec
+        let url_to_sign = {
+            let mut signing_url = url.clone();
+            signing_url.set_query(None);
+            signing_url.set_fragment(None);
+            signing_url.to_string()
+        };
+
+        let base_string = format!(
+            "{}&{}&{}",
+            method.to_uppercase(),
+            url_encode(&url_to_sign),
+            url_encode(&parameter_string)
+        );
+
+        // 3. Generate the signing key
+        let signing_key = format!(
+            "{}&{}",
+            url_encode(consumer_api_secret),
+            url_encode(token_secret)
+        );
+
+        // 4. Sign the base string with the signing key using HMAC-SHA1
+        let mut mac = HmacSha1::new_from_slice(signing_key.as_bytes())
+            .expect("HMAC can be initialized with key");
+        mac.update(base_string.as_bytes());
+        let signature = mac.finalize().into_bytes();
+        let signature_base64 = BASE64_STANDARD.encode(signature);
+
+        // Add the signature to the OAuth parameters
+        oauth_params.insert("oauth_signature", &signature_base64);
+
+        // 5. Build the Authorization header string (note: use original oauth_params, not all_params)
+        let auth_header_value = oauth_params
+            .iter()
+            .map(|(key, value)| format!("{}=\"{}\"", key, url_encode(value)))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        let header = format!("OAuth {}", auth_header_value);
+        Ok(header)
+    }
 }
 
 impl std::fmt::Debug for Creds {
@@ -467,28 +589,6 @@ impl std::fmt::Debug for Creds {
                 &self.access_token.as_ref().map_or("", |_| "xxx"),
             )
             .finish()
-    }
-}
-
-// Internally this makes it easier to pass into reqwest for signing
-impl SecretsProvider for Creds {
-    fn get_consumer_key_pair(&self) -> (&str, &str) {
-        (
-            self.consumer_api_key.as_str(),
-            self.consumer_api_secret
-                .as_deref()
-                .expect("`consumer_api_secret` is required"),
-        )
-    }
-
-    fn get_token_pair_option(&self) -> Option<(&str, &str)> {
-        self.access_token
-            .as_deref()
-            .zip(self.token_secret.as_deref())
-    }
-
-    fn get_token_option_pair(&self) -> (Option<&str>, Option<&str>) {
-        (self.access_token.as_deref(), self.token_secret.as_deref())
     }
 }
 
@@ -540,7 +640,6 @@ pub(crate) struct Pages {
 
     // #[serde(rename = "LastPage")]
     // pub(crate) last_page: String,
-
     #[serde(rename = "NextPage")]
     pub(crate) next_page: Option<String>,
 }

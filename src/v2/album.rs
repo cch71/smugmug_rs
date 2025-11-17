@@ -6,9 +6,12 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
-use crate::v2::macros::{obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice, stream_children_from_url};
+use crate::v2::macros::{
+    obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice,
+    stream_children_from_url,
+};
 use crate::v2::parsers::{from_privacy, is_none_or_empty_str};
-use crate::v2::{Client, Image, Pages, PrivacyLevel, API_ORIGIN};
+use crate::v2::{API_ORIGIN, Client, Image, Pages, PrivacyLevel};
 use async_stream::try_stream;
 use chrono::{DateTime, Utc};
 use futures::Stream;
@@ -56,7 +59,6 @@ pub struct Album {
 
     // #[serde(rename = "SmugSearchable", skip_serializing_if = "is_none_or_empty_str")]
     // pub is_smug_searchable: Option<String>,
-
     #[serde(rename = "UploadKey", skip_serializing_if = "is_none_or_empty_str")]
     pub upload_key: Option<String>,
 
@@ -116,16 +118,21 @@ impl Album {
     }
 
     /// Retrieves information about the images associated with this Album
-    pub fn images(&self) -> Result<impl Stream<Item=Result<Image, SmugMugError>>, SmugMugError> {
+    pub fn images(&self) -> Result<impl Stream<Item = Result<Image, SmugMugError>>, SmugMugError> {
         self.images_with_client(
-            self.client.as_ref().ok_or(SmugMugError::ClientNotFound()).unwrap().clone())
+            self.client
+                .as_ref()
+                .ok_or(SmugMugError::ClientNotFound())
+                .unwrap()
+                .clone(),
+        )
     }
 
     /// Retrieves information about images associated with this Album using the provided client
     pub fn images_with_client(
         &self,
         client: Client,
-    ) -> Result<impl Stream<Item=Result<Image, SmugMugError>>, SmugMugError> {
+    ) -> Result<impl Stream<Item = Result<Image, SmugMugError>>, SmugMugError> {
         // Build up the query parameters
         let params: Vec<(&str, &str)> = Vec::new();
 
@@ -138,13 +145,31 @@ impl Album {
         ))
     }
 
-    /// Updates this Album data fields
-    pub async fn update_album_data_with_client(&self, client: Client, data: Vec<u8>) -> Result<Album, SmugMugError> {
+    /// Updates this Album's data fields
+    pub async fn update_album_data_with_client(
+        &self,
+        client: Client,
+        data: Vec<u8>,
+    ) -> Result<Album, SmugMugError> {
         obj_update_from_uri!(client, self.uri.as_str(), data, AlbumResponse, album)
     }
 
+    /// Updates this Album's data fields using the internal client
+    pub async fn update_album_data_fields(&self, data: Vec<u8>) -> Result<Album, SmugMugError> {
+        let client = self
+            .client
+            .as_ref()
+            .ok_or(SmugMugError::ClientNotFound())?
+            .clone();
+        self.update_album_data_with_client(client, data).await
+    }
+
     /// Updates data for the provided Album id using the given client
-    pub async fn update_album_data_with_client_from_id(client: Client, data: Vec<u8>, id: &str) -> Result<Album, SmugMugError> {
+    pub async fn update_album_data_with_client_from_id(
+        client: Client,
+        data: Vec<u8>,
+        id: &str,
+    ) -> Result<Album, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join(Self::BASE_URI)?
             .join(id)?;
@@ -152,26 +177,41 @@ impl Album {
     }
 
     /// Clear the upload key on this Album with the provided client
-    pub async fn clear_upload_key_with_client(&self, client: Client) -> Result<Album, SmugMugError> {
+    pub async fn clear_upload_key_with_client(
+        &self,
+        client: Client,
+    ) -> Result<Album, SmugMugError> {
         let data = serde_json::to_vec(&json!({"UploadKey": ""}))?;
         self.update_album_data_with_client(client, data).await
     }
 
-    /// Clear the upload key on this Album
+    /// Clear the upload key on this Album using the internal client
     pub async fn clear_upload_key(&self) -> Result<Album, SmugMugError> {
-        let client = self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?.clone();
+        let client = self
+            .client
+            .as_ref()
+            .ok_or(SmugMugError::ClientNotFound())?
+            .clone();
         self.clear_upload_key_with_client(client).await
     }
 
     /// Set the upload key for this Album
-    pub async fn set_upload_key_with_client(&self, client: Client, upload_key: &str) -> Result<Album, SmugMugError> {
+    pub async fn set_upload_key_with_client(
+        &self,
+        client: Client,
+        upload_key: &str,
+    ) -> Result<Album, SmugMugError> {
         let data = serde_json::to_vec(&json!({"UploadKey": upload_key}))?;
         self.update_album_data_with_client(client, data).await
     }
 
     /// Set the upload key for this Album
     pub async fn set_upload_key(&self, upload_key: &str) -> Result<Album, SmugMugError> {
-        let client = self.client.as_ref().ok_or(SmugMugError::ClientNotFound())?.clone();
+        let client = self
+            .client
+            .as_ref()
+            .ok_or(SmugMugError::ClientNotFound())?
+            .clone();
         self.set_upload_key_with_client(client, upload_key).await
     }
 }

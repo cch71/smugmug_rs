@@ -8,7 +8,7 @@
 use crate::v2::errors::SmugMugError;
 use crate::v2::macros::obj_from_url;
 use crate::v2::parsers::is_none_or_empty_str;
-use crate::v2::{Client, Node, API_ORIGIN};
+use crate::v2::{API_ORIGIN, Client, Node};
 use serde::{Deserialize, Serialize};
 
 /// Holds information returned from the User API.
@@ -81,7 +81,7 @@ impl User {
             self.client.ok_or(SmugMugError::ClientNotFound())?.clone(),
             req_url.as_str(),
         )
-            .await
+        .await
     }
 }
 

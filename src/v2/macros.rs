@@ -97,4 +97,7 @@ macro_rules! stream_children_from_url {
     }};
 }
 
-pub(crate) use {obj_from_url, objs_from_id_slice, stream_children_from_url, obj_update_from_uri, obj_update_from_url};
+pub(crate) use {
+    obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice,
+    stream_children_from_url,
+};

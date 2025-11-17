@@ -53,12 +53,7 @@ pub(crate) fn get_full_auth_tokens() -> anyhow::Result<smugmug::v2::Creds> {
 pub(crate) fn get_read_only_auth_tokens() -> anyhow::Result<smugmug::v2::Creds> {
     let api_key = std::env::var("SMUGMUG_API_KEY")?;
 
-    Ok(smugmug::v2::Creds::from_tokens(
-        &api_key,
-        None,
-        None,
-        None,
-    ))
+    Ok(smugmug::v2::Creds::from_tokens(&api_key, None, None, None))
 }
 #[allow(dead_code)]
 fn init_logger_and_env() {
