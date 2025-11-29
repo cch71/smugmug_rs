@@ -94,7 +94,7 @@ impl Node {
         obj_from_url!(client, url, NodeResponse, node)
     }
 
-    /// Returns information for the specified node id
+    /// Returns information for the specified node id using the provided client
     pub async fn from_id(client: Client, id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join(Self::BASE_URI)?
@@ -146,7 +146,7 @@ impl Node {
             .await
     }
 
-    /// Retrieves the Album Id if this is node is an Album type
+    /// Retrieves the album id if this node is an [`Album`] type
     pub fn album_id(&self) -> Result<String, SmugMugError> {
         let album_uri = self.uris.album.as_ref().ok_or(SmugMugError::NotAnAlbum())?;
         let req_url = url::Url::parse(API_ORIGIN)?.join(album_uri)?;
@@ -217,7 +217,7 @@ impl Node {
         )
     }
 
-    /// Retrieves the Child Nodes information for this Node using the provided client
+    /// Retrieves the child nodes information of this node using the provided client
     pub fn children_with_client(
         &self,
         client: Client,
@@ -266,7 +266,7 @@ impl Hash for Node {
 
 impl PartialOrd for Node {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.node_id.cmp(&other.node_id))
+        Some(self.cmp(other))
     }
 }
 

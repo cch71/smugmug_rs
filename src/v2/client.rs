@@ -11,12 +11,12 @@ use bytes::Bytes;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use hmac::{Hmac, Mac};
 use num_enum::TryFromPrimitive;
-use rand::Rng;
 use rand::distr::Alphanumeric;
-use reqwest::Response as ReqwestResponse;
+use rand::Rng;
 use reqwest::header::HeaderMap;
-use serde::Deserialize;
+use reqwest::Response as ReqwestResponse;
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use sha1::Sha1;
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
@@ -278,10 +278,9 @@ impl ClientRef {
         // get the payload bytes
         let payload_bytes = resp.bytes().await?;
 
-        if log::log_enabled!(log::Level::Debug) {
-            if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&payload_bytes) {
-                log::debug!("JSON Raw Resp: {}", serde_json::to_string_pretty(&val)?);
-            }
+        if log::log_enabled!(log::Level::Debug) &&
+            let Ok(val) = serde_json::from_slice::<serde_json::Value>(&payload_bytes) {
+            log::debug!("JSON Raw Resp: {}", serde_json::to_string_pretty(&val)?);
         }
 
         // Pull out the payload

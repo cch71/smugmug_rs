@@ -9,7 +9,7 @@ use crate::v2::errors::SmugMugError;
 use crate::v2::macros::{
     obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice,
 };
-use crate::v2::{API_ORIGIN, Client};
+use crate::v2::{Client, API_ORIGIN};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -152,7 +152,7 @@ impl Image {
                 .unwrap()
                 .clone(),
         )
-        .await
+            .await
     }
 }
 
@@ -175,7 +175,7 @@ impl Hash for Image {
 
 impl PartialOrd for Image {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.image_key.cmp(&other.image_key))
+        Some(self.cmp(other))
     }
 }
 

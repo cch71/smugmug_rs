@@ -11,7 +11,7 @@ use crate::v2::macros::{
     stream_children_from_url,
 };
 use crate::v2::parsers::{from_privacy, is_none_or_empty_str};
-use crate::v2::{API_ORIGIN, Client, Image, Pages, PrivacyLevel};
+use crate::v2::{Client, Image, Pages, PrivacyLevel, API_ORIGIN};
 use async_stream::try_stream;
 use chrono::{DateTime, Utc};
 use futures::Stream;
@@ -101,7 +101,7 @@ impl Album {
         obj_from_url!(client, url, AlbumResponse, album)
     }
 
-    /// Returns information for the specified album id
+    /// Returns information for the specified album id using the provided client
     pub async fn from_id(client: Client, id: &str) -> Result<Self, SmugMugError> {
         let req_url = url::Url::parse(API_ORIGIN)?
             .join(Self::BASE_URI)?
@@ -118,12 +118,11 @@ impl Album {
     }
 
     /// Retrieves information about the images associated with this Album
-    pub fn images(&self) -> Result<impl Stream<Item = Result<Image, SmugMugError>>, SmugMugError> {
+    pub fn images(&self) -> Result<impl Stream<Item=Result<Image, SmugMugError>>, SmugMugError> {
         self.images_with_client(
             self.client
                 .as_ref()
-                .ok_or(SmugMugError::ClientNotFound())
-                .unwrap()
+                .ok_or(SmugMugError::ClientNotFound())?
                 .clone(),
         )
     }
@@ -132,7 +131,7 @@ impl Album {
     pub fn images_with_client(
         &self,
         client: Client,
-    ) -> Result<impl Stream<Item = Result<Image, SmugMugError>>, SmugMugError> {
+    ) -> Result<impl Stream<Item=Result<Image, SmugMugError>>, SmugMugError> {
         // Build up the query parameters
         let params: Vec<(&str, &str)> = Vec::new();
 
@@ -235,7 +234,7 @@ impl Hash for Album {
 
 impl PartialOrd for Album {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.album_key.cmp(&other.album_key))
+        Some(self.cmp(other))
     }
 }
 
