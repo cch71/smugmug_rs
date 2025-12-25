@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -39,7 +39,7 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -67,7 +67,7 @@ jobs:
 #    steps:
 #      - name: Checkout code
 #        uses: actions/checkout@v3
-#      - uses: actions/cache@v4
+#      - uses: actions/cache@v5
 #        with:
 #          path: |
 #            ~/.cargo/registry
