@@ -40,7 +40,7 @@ log = "0.4"
 hmac = "0.12"
 sha1 = "0.10"
 base64 = "0.22"
-rand = { version = "0.9" }
+rand = { version = "0.10" }
 urlencoding = "2.1"
 
 [dev-dependencies]
