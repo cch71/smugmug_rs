@@ -13,12 +13,12 @@ mod test {
     use crate::helpers::{get_full_client, get_read_only_client};
     use chrono::Utc;
     use futures::{StreamExt, pin_mut};
-    use rand::Rng;
+    use rand::RngExt;
     use rand::distr::Alphanumeric;
     use serde_json::json;
     use smugmug::v2::{
-        Album, CreateAlbumProps, Image, Node, NodeTypeFilters, PrivacyLevel, SortDirection,
-        SortMethod, User,
+        Album, CreateAlbumProps, Image, Node, NodeType, NodeTypeFilters, PrivacyLevel,
+        SortDirection, SortMethod, User,
     };
 
     #[tokio::test]
@@ -248,5 +248,106 @@ mod test {
             .unwrap();
 
         assert_eq!(objs.len(), 2);
+    }
+
+    // The type filter used to be dropped from the request, so every child type came back
+    #[tokio::test]
+    async fn node_children_type_filter_is_applied() {
+        let client = get_read_only_client();
+        // Using Troop 27 root node
+        let node_info = Node::from_id(client.clone(), "67t8MV").await.unwrap();
+        let node_children = node_info
+            .children(
+                NodeTypeFilters::Album,
+                SortDirection::Ascending,
+                SortMethod::DateAdded,
+            )
+            .unwrap();
+
+        let mut node_count: u64 = 0;
+        pin_mut!(node_children);
+        while let Some(node_result) = node_children.next().await {
+            assert!(matches!(node_result.unwrap().node_type, NodeType::Album));
+            node_count += 1;
+        }
+        assert!(node_count > 0);
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn images_with_metadata_using_full_creds() {
+        let client = get_full_client();
+        // Uses a Troop 27 Album
+        let album = Album::from_id(client.clone(), "pJk78v").await.unwrap();
+        let images = album.images_with_metadata().unwrap();
+
+        let mut count: u64 = 0;
+        pin_mut!(images);
+        while let Some(result) = images.next().await {
+            let item = result.unwrap();
+            assert!(item.image.serial.is_some());
+            assert!(item.metadata.unwrap().fields.len() > 50);
+            count += 1;
+        }
+        assert_eq!(count, album.image_count);
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn image_metadata_and_largest_video_using_full_creds() {
+        let client = get_full_client();
+
+        // Uses a Troop 27 video
+        let video = Image::from_id(client.clone(), "xVhzRzQ-0").await.unwrap();
+        assert!(video.is_video);
+        let metadata = video.metadata().await.unwrap();
+        assert!(metadata.video_codec.is_some());
+
+        let largest = video.largest_video().await.unwrap().unwrap();
+        let data = largest.download().await.unwrap();
+        assert_eq!(data.len() as u64, largest.size);
+        assert_eq!(
+            Some(format!("{:x}", md5::compute(data))),
+            largest.md5
+        );
+
+        // Uses a Troop 27 photo, which has no video
+        let photo = Image::from_id(client.clone(), "Mzf2k5x-0").await.unwrap();
+        assert!(photo.largest_video().await.unwrap().is_none());
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn deleted_albums_and_folders_using_full_creds() {
+        let client = get_full_client();
+        let user_info = User::authenticated_user_info(client.clone()).await.unwrap();
+
+        let albums = user_info.deleted_albums().unwrap();
+        pin_mut!(albums);
+        while let Some(album) = albums.next().await {
+            let album = album.unwrap();
+            assert!(!album.album_key().is_empty() && album.date_deleted.is_some());
+        }
+
+        let folders = user_info.deleted_folders().unwrap();
+        pin_mut!(folders);
+        while let Some(folder) = folders.next().await {
+            assert!(!folder.unwrap().folder_key().is_empty());
+        }
+    }
+
+    // Step 1 of the OAuth1 login, which needs no user input
+    #[ignore]
+    #[tokio::test]
+    async fn oauth1_request_token_from_smugmug() {
+        dotenvy::dotenv().ok();
+        let token = smugmug::v2::oauth1_request_token(
+            &std::env::var("SMUGMUG_API_KEY").unwrap(),
+            &std::env::var("SMUGMUG_API_SECRET").unwrap(),
+            "oob",
+        )
+        .await
+        .unwrap();
+        assert!(!token.token.is_empty() && !token.secret.is_empty());
     }
 }

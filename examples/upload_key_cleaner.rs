@@ -113,8 +113,8 @@ async fn main() -> Result<()> {
         {
             log::info!(
                 "Album to remove upload key Name: {} Image Count: {} {}",
-                &album_info.name,
-                &album_info.image_count,
+                album_info.name,
+                album_info.image_count,
                 album_info
                     .upload_key
                     .as_ref()

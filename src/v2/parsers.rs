@@ -6,7 +6,9 @@
  *  at your option.
  */
 use crate::v2::{NodeType, PrivacyLevel};
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use serde_json::Value;
 use std::str::FromStr;
 
 // Parses node type
@@ -32,4 +34,57 @@ where
 // Skips serialization if is none or is some but empty string
 pub fn is_none_or_empty_str(tst: &Option<String>) -> bool {
     tst.as_ref().filter(|v| !(*v).is_empty()).is_none()
+}
+
+// The metadata endpoints return the same field as a string, a number or an empty string
+// depending on the image, so these parsers accept any of those forms and treat empty or
+// unparseable values as missing instead of failing the whole response.
+
+// Parses a string or number as an optional string, empty strings become None
+pub fn from_lenient_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match Option::<Value>::deserialize(deserializer)? {
+        Some(Value::String(s)) if !s.is_empty() => Some(s),
+        Some(v @ (Value::Number(_) | Value::Bool(_))) => Some(v.to_string()),
+        _ => None,
+    })
+}
+
+// Parses a number or numeric string as an optional f64
+pub fn from_lenient_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match Option::<Value>::deserialize(deserializer)? {
+        Some(Value::Number(n)) => n.as_f64(),
+        Some(Value::String(s)) => s.trim().parse().ok(),
+        _ => None,
+    })
+}
+
+// Parses a number or numeric string as an optional u64
+pub fn from_lenient_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match Option::<Value>::deserialize(deserializer)? {
+        Some(Value::Number(n)) => n.as_u64(),
+        Some(Value::String(s)) => s.trim().parse().ok(),
+        _ => None,
+    })
+}
+
+// Parses an RFC 3339 date/time string, empty or unparseable values become None
+pub fn from_lenient_datetime<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match Option::<Value>::deserialize(deserializer)? {
+        Some(Value::String(s)) => DateTime::parse_from_rfc3339(&s)
+            .ok()
+            .map(|v| v.with_timezone(&Utc)),
+        _ => None,
+    })
 }

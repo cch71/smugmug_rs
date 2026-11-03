@@ -1,0 +1,22 @@
+name: Release
+
+# `cargo release --execute` pushes a v<version> tag, which creates the GitHub release with
+# that version's section of CHANGELOG.md as its notes.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.*'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Create GitHub release from CHANGELOG.md
+        uses: taiki-e/create-gh-release-action@v1
+        with:
+          changelog: CHANGELOG.md
+          token: ${{ secrets.GITHUB_TOKEN }}

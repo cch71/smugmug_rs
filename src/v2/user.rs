@@ -6,9 +6,12 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
-use crate::v2::macros::obj_from_url;
+use crate::v2::deleted::{DeletedAlbumsResponse, DeletedFoldersResponse};
+use crate::v2::macros::{obj_from_url, stream_children_from_url};
 use crate::v2::parsers::is_none_or_empty_str;
-use crate::v2::{API_ORIGIN, Client, Node};
+use crate::v2::{API_ORIGIN, Client, DeletedAlbum, DeletedFolder, Node};
+use async_stream::try_stream;
+use futures::Stream;
 use serde::{Deserialize, Serialize};
 
 /// Holds information returned from the User API.
@@ -82,6 +85,57 @@ impl User {
             req_url.as_str(),
         )
         .await
+    }
+
+    // The internal client
+    fn client(&self) -> Result<Client, SmugMugError> {
+        self.client.clone().ok_or(SmugMugError::ClientNotFound())
+    }
+
+    /// Retrieves the albums in this user's trash.  Requires the user's OAuth1 access token.
+    pub fn deleted_albums(
+        &self,
+    ) -> Result<impl Stream<Item = Result<DeletedAlbum, SmugMugError>>, SmugMugError> {
+        self.deleted_albums_with_client(self.client()?)
+    }
+
+    /// Retrieves the albums in this user's trash using the provided client
+    pub fn deleted_albums_with_client(
+        &self,
+        client: Client,
+    ) -> Result<impl Stream<Item = Result<DeletedAlbum, SmugMugError>>, SmugMugError> {
+        let params: Vec<(&str, &str)> = Vec::new();
+        Ok(stream_children_from_url!(
+            client,
+            Some(format!("{}!deletedalbums", self.uri)),
+            &params,
+            DeletedAlbumsResponse,
+            albums,
+            |item| item
+        ))
+    }
+
+    /// Retrieves the folders in this user's trash.  Requires the user's OAuth1 access token.
+    pub fn deleted_folders(
+        &self,
+    ) -> Result<impl Stream<Item = Result<DeletedFolder, SmugMugError>>, SmugMugError> {
+        self.deleted_folders_with_client(self.client()?)
+    }
+
+    /// Retrieves the folders in this user's trash using the provided client
+    pub fn deleted_folders_with_client(
+        &self,
+        client: Client,
+    ) -> Result<impl Stream<Item = Result<DeletedFolder, SmugMugError>>, SmugMugError> {
+        let params: Vec<(&str, &str)> = Vec::new();
+        Ok(stream_children_from_url!(
+            client,
+            Some(format!("{}!deletedfolders", self.uri)),
+            &params,
+            DeletedFoldersResponse,
+            folders,
+            |item| item
+        ))
     }
 }
 

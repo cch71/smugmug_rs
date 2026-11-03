@@ -66,28 +66,33 @@ macro_rules! objs_from_id_slice {
     }};
 }
 
+// Streams the items of a paged listing.  The given params (plus `_verbosity`) are applied to
+// every page, since SmugMug's `Pages.NextPage` uri drops most of them.  The optional last
+// argument maps each item; by default the client is set on it.
 macro_rules! stream_children_from_url {
     ( $c:expr, $url: expr, $params:expr, $rt: ty, $r: ident) => {{
-        let params = vec![("_verbosity", "1")];
-
+        stream_children_from_url!($c, $url, $params, $rt, $r, |mut item| {
+            item.client = Some($c.clone());
+            item
+        })
+    }};
+    ( $c:expr, $url: expr, $params:expr, $rt: ty, $r: ident, |$item:pat_param| $map: expr) => {{
         try_stream! {
             if let Some(url) = $url {
-                // The Pages->NextPage doesn't include verbosity so parsing original params
-                // and dealing with verbosity seperately
-                let mut req_url = url::Url::parse_with_params(API_ORIGIN, $params)?.join(url)?;
+                let mut params: Vec<(&str, &str)> = ($params).to_vec();
+                params.push(("_verbosity", "1"));
+                let mut req_url = crate::v2::client::api_url_with_params(&url, &params)?;
                 loop {
-                    let resp = $c.get::<$rt>(
-                        req_url.as_str(), Some(&params)
-                    ).await?
-                    .payload
-                    .ok_or(SmugMugError::ResponseMissing())?;
-                    for mut item in resp.$r {
-                        item.client = Some($c.clone());
-                        yield item
+                    let resp = $c.get::<$rt>(req_url.as_str(), None)
+                        .await?
+                        .payload
+                        .ok_or(SmugMugError::ResponseMissing())?;
+                    for $item in resp.$r {
+                        yield $map
                     }
 
                     if let Some(next_page) = resp.pages.and_then(|p| p.next_page) {
-                        req_url = url::Url::parse(API_ORIGIN)?.join(&next_page)?;
+                        req_url = crate::v2::client::api_url_with_params(&next_page, &params)?;
                     } else {
                         break;
                     }

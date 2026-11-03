@@ -59,12 +59,12 @@ async fn retrieve_first_image_from_album(album: Album) -> Result<bool> {
 
     pin_mut!(images);
     while let Some(Ok(image)) = images.next().await {
-        println!("Found possible image: {} {:?}", &image.name, &image);
+        println!("Found possible image: {} {:?}", image.name, image);
         // NOTE: archived image may not be there if is processing but not completely sure.
         if image.is_processing {
             continue;
         }
-        println!("Downloading image: {}", &image.name);
+        println!("Downloading image: {}", image.name);
         let image_data = image.get_archive().await.expect("expected image data");
 
         // Download image and verify data is good

@@ -313,7 +313,8 @@ struct NodeResponse {
 // Expected response from a Node Children request
 #[derive(Deserialize, Debug)]
 struct NodesResponse {
-    #[serde(rename = "Node")]
+    // Missing when the listing is empty
+    #[serde(default, rename = "Node")]
     nodes: Vec<Node>,
 
     #[serde(rename = "Pages")]

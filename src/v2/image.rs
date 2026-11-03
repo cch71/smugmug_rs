@@ -9,7 +9,8 @@ use crate::v2::errors::SmugMugError;
 use crate::v2::macros::{
     obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice,
 };
-use crate::v2::{Client, API_ORIGIN};
+use crate::v2::parsers::from_lenient_datetime;
+use crate::v2::{API_ORIGIN, Client, ImageMetadata, LargestVideo};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -82,6 +83,42 @@ pub struct Image {
 
     #[serde(rename = "LastUpdated")]
     pub last_updated: DateTime<Utc>,
+
+    /// When the photo or video was taken, as SmugMug read it from the file
+    #[serde(
+        default,
+        rename = "DateTimeOriginal",
+        deserialize_with = "from_lenient_datetime",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub date_time_original: Option<DateTime<Utc>>,
+
+    /// Revision of the image, bumped when the image is replaced.  Together with the image key
+    /// (`KEY-SERIAL`) it identifies the image for the per image endpoints.
+    #[serde(default, rename = "Serial", skip_serializing_if = "Option::is_none")]
+    pub serial: Option<u64>,
+
+    #[serde(
+        default,
+        rename = "OriginalWidth",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub original_width: Option<u64>,
+
+    #[serde(
+        default,
+        rename = "OriginalHeight",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub original_height: Option<u64>,
+
+    /// Size in bytes of the original upload
+    #[serde(
+        default,
+        rename = "OriginalSize",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub original_size: Option<u64>,
 }
 
 impl Image {
@@ -144,6 +181,7 @@ impl Image {
         }
     }
 
+    /// Retrieves the archive (original) image data using the internal client
     pub async fn get_archive(&self) -> Result<Bytes, SmugMugError> {
         self.get_archive_with_client(
             self.client
@@ -152,7 +190,88 @@ impl Image {
                 .unwrap()
                 .clone(),
         )
+        .await
+    }
+
+    /// Returns the image key with its serial (e.g. `KEY-0`), which the per image endpoints such
+    /// as `!metadata` and `!largestvideo` require.  Without the serial SmugMug redirects, and the
+    /// redirected request fails the OAuth1 signature check.
+    pub fn key_with_serial(&self) -> String {
+        // The uri ends with the key and serial (e.g. /api/v2/album/ALBUM/image/KEY-0)
+        match self.uri.rsplit('/').next() {
+            Some(last) if last.starts_with(&format!("{}-", self.image_key)) => last.to_string(),
+            _ => match self.serial {
+                Some(serial) => format!("{}-{}", self.image_key, serial),
+                None => format!("{}-0", self.image_key),
+            },
+        }
+    }
+
+    // Url for one of the image's `!` endpoints
+    fn endpoint_url(&self, endpoint: &str) -> Result<url::Url, SmugMugError> {
+        Ok(url::Url::parse(API_ORIGIN)?
+            .join(Self::BASE_URI)?
+            .join(&format!("{}!{}", self.key_with_serial(), endpoint))?)
+    }
+
+    // The internal client
+    fn client(&self) -> Result<Client, SmugMugError> {
+        self.client.clone().ok_or(SmugMugError::ClientNotFound())
+    }
+
+    /// Retrieves the EXIF/IPTC metadata SmugMug holds for this image using the provided client.
+    ///
+    /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/image-metadata.html)
+    pub async fn metadata_with_client(
+        &self,
+        client: Client,
+    ) -> Result<ImageMetadata, SmugMugError> {
+        let req_url = self.endpoint_url("metadata")?;
+        client
+            .get::<ImageMetadataResponse>(req_url.as_str(), None)
+            .await?
+            .payload
+            .ok_or(SmugMugError::ResponseMissing())
+            .map(|v| v.metadata)
+    }
+
+    /// Retrieves the EXIF/IPTC metadata SmugMug holds for this image
+    pub async fn metadata(&self) -> Result<ImageMetadata, SmugMugError> {
+        self.metadata_with_client(self.client()?).await
+    }
+
+    /// Retrieves information about the largest video rendition of this image using the provided
+    /// client.  Returns None if there is no video for this image.
+    ///
+    /// For videos [`Self::archived_uri`] only points at a JPEG poster frame; use
+    /// [`LargestVideo::download`] to get the video itself.
+    pub async fn largest_video_with_client(
+        &self,
+        client: Client,
+    ) -> Result<Option<LargestVideo>, SmugMugError> {
+        let req_url = self.endpoint_url("largestvideo")?;
+        match client
+            .get::<LargestVideoResponse>(req_url.as_str(), None)
             .await
+        {
+            Ok(resp) => Ok(resp.payload.and_then(|v| v.largest_video).map(|mut v| {
+                v.client = Some(client.clone());
+                v
+            })),
+            // Images that aren't videos return a 404
+            Err(SmugMugError::Request(err))
+                if err.status() == Some(reqwest::StatusCode::NOT_FOUND) =>
+            {
+                Ok(None)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Retrieves information about the largest video rendition of this image.
+    /// Returns None if there is no video for this image.
+    pub async fn largest_video(&self) -> Result<Option<LargestVideo>, SmugMugError> {
+        self.largest_video_with_client(self.client()?).await
     }
 }
 
@@ -205,4 +324,72 @@ struct ImageResponse {
 struct ImagesResponse {
     #[serde(rename = "Image")]
     images: Vec<Image>,
+}
+
+// Expected response for a request to get an Image's metadata
+#[derive(Deserialize, Debug)]
+struct ImageMetadataResponse {
+    #[serde(rename = "ImageMetadata")]
+    metadata: ImageMetadata,
+}
+
+// Expected response for a request to get an Image's largest video
+#[derive(Deserialize, Debug)]
+struct LargestVideoResponse {
+    #[serde(rename = "LargestVideo")]
+    largest_video: Option<LargestVideo>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // Image JSON as saved by older versions, without the newer fields
+    fn old_image_json() -> serde_json::Value {
+        json!({
+            "Uri": "/api/v2/album/pJk78v/image/Mzf2k5x-0", "Title": "", "Altitude": 0,
+            "Latitude": "0", "Longitude": "0", "Format": "JPG",
+            "FileName": "20260808_083155.jpg", "ImageKey": "Mzf2k5x", "KeywordArray": [],
+            "ArchivedSize": 6023161, "Processing": false, "IsVideo": false, "Hidden": false,
+            "Watermarked": false, "DateTimeUploaded": "2026-08-08T21:49:34Z",
+            "LastUpdated": "2026-08-08T21:49:35Z"
+        })
+    }
+
+    #[test]
+    fn deserializes_older_saved_json() {
+        let image: Image = serde_json::from_value(old_image_json()).unwrap();
+        assert_eq!(image.date_time_original, None);
+        assert_eq!(image.serial, None);
+        assert_eq!(image.original_size, None);
+        // Saving it again doesn't add the missing fields
+        assert_eq!(serde_json::to_value(&image).unwrap(), old_image_json());
+    }
+
+    #[test]
+    fn bad_date_time_original_is_none() {
+        let mut v = old_image_json();
+        v["DateTimeOriginal"] = json!("");
+        let image: Image = serde_json::from_value(v).unwrap();
+        assert_eq!(image.date_time_original, None);
+    }
+
+    #[test]
+    fn key_with_serial() {
+        let mut image: Image = serde_json::from_value(old_image_json()).unwrap();
+        assert_eq!(image.key_with_serial(), "Mzf2k5x-0");
+        assert_eq!(
+            image.endpoint_url("largestvideo").unwrap().as_str(),
+            "https://api.smugmug.com/api/v2/image/Mzf2k5x-0!largestvideo"
+        );
+
+        image.uri = "/api/v2/image/Mzf2k5x-2".to_string();
+        assert_eq!(image.key_with_serial(), "Mzf2k5x-2");
+
+        // Falls back to the serial when the uri doesn't end with the key
+        image.uri = "/api/v2/image/other".to_string();
+        image.serial = Some(3);
+        assert_eq!(image.key_with_serial(), "Mzf2k5x-3");
+    }
 }

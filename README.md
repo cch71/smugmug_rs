@@ -12,19 +12,24 @@ For further details on the Rest API refer to: [SmugMug API Docs](https://api.smu
 ## Features
 
 - Retrieve Basic user information (Read only).
+    - List the albums and folders in the user's trash.
 - Retrieve Node information.
     - Can create an Album.
     - List children of a Node.
 - Retrieve Album information.
     - Can set the upload key.
     - Can list the images contained in an Album.
+    - Can list the images together with their EXIF metadata in one paged request.
 - Retrieve Image information.
     - Download of the archive image supported.
+    - Retrieve the EXIF/IPTC metadata SmugMug holds for an image.
+    - Retrieve and download the largest video rendition of a video.
+- OAuth1 login helpers for getting the Access Token/Secret.
 - Lower level interface for handling more direct communication.
     - Exposes the SmugMug API Rate Limit information.
 
-_The SmugMug API uses OAuth1. This library handles the request signing.
-Getting the Access Token/Secret is left up to the consumer of this library_
+_The SmugMug API uses OAuth1. This library handles the request signing, and `v2::oauth` has the
+request token, authorize and access token steps for getting the Access Token/Secret_
 
 The [`v2::Client`] currently provides direct GET/PATCH/POST functionality to allow library usage
 for features that may not be implemented yet in the higher level interfaces\*

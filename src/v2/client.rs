@@ -6,26 +6,39 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
-use base64::prelude::*;
+use crate::v2::oauth::oauth1_authorization_header;
 use bytes::Bytes;
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use hmac::{Hmac, Mac};
 use num_enum::TryFromPrimitive;
-use rand::distr::Alphanumeric;
-use rand::Rng;
-use reqwest::header::HeaderMap;
 use reqwest::Response as ReqwestResponse;
-use serde::de::DeserializeOwned;
+use reqwest::header::HeaderMap;
 use serde::Deserialize;
-use sha1::Sha1;
-use std::collections::BTreeMap;
+use serde::de::DeserializeOwned;
 use std::sync::{Arc, RwLock};
-use urlencoding::encode as url_encode;
-
-type HmacSha1 = Hmac<Sha1>;
 
 // Root SmugMug API
 pub(crate) const API_ORIGIN: &str = "https://api.smugmug.com";
+
+// Builds a full API url from a uri (which may already carry a query, such as a `Pages.NextPage`
+// uri) and adds any of the given params whose key isn't already in the query.
+//
+// SmugMug's `NextPage` keeps `start`/`count` but drops other params such as `_verbosity`,
+// `_expandmethod` and sometimes `_expand`, so paging has to put them back.
+pub(crate) fn api_url_with_params(
+    uri: &str,
+    params: &ApiParams<'_>,
+) -> Result<url::Url, SmugMugError> {
+    let mut req_url = url::Url::parse(API_ORIGIN)?.join(uri)?;
+    let existing: Vec<String> = req_url.query_pairs().map(|(k, _)| k.into_owned()).collect();
+    let missing: Vec<_> = params
+        .iter()
+        .filter(|(k, _)| !existing.iter().any(|e| e == k))
+        .collect();
+    if !missing.is_empty() {
+        req_url.query_pairs_mut().extend_pairs(missing);
+    }
+    Ok(req_url)
+}
 
 /// Handles the lower level communication with the SmugMug REST API.
 #[derive(Default, Clone)]
@@ -278,8 +291,9 @@ impl ClientRef {
         // get the payload bytes
         let payload_bytes = resp.bytes().await?;
 
-        if log::log_enabled!(log::Level::Debug) &&
-            let Ok(val) = serde_json::from_slice::<serde_json::Value>(&payload_bytes) {
+        if log::log_enabled!(log::Level::Debug)
+            && let Ok(val) = serde_json::from_slice::<serde_json::Value>(&payload_bytes)
+        {
             log::debug!("JSON Raw Resp: {}", serde_json::to_string_pretty(&val)?);
         }
 
@@ -494,80 +508,13 @@ impl Creds {
             .as_ref()
             .ok_or(SmugMugError::Auth("Token secret not found".to_string()))?;
 
-        // 1. Generate nonce and timestamp
-        let timestamp = Utc::now().timestamp().to_string();
-        let nonce: String = rand::rng()
-            .sample_iter(Alphanumeric)
-            .take(32) // Generates a 32-character long nonce
-            .map(char::from)
-            .collect();
-
-        // 2. Collect OAuth parameters
-        let mut oauth_params: BTreeMap<&str, &str> = BTreeMap::new();
-        oauth_params.insert("oauth_consumer_key", &self.consumer_api_key);
-        oauth_params.insert("oauth_nonce", &nonce);
-        oauth_params.insert("oauth_signature_method", "HMAC-SHA1");
-        oauth_params.insert("oauth_timestamp", &timestamp);
-        oauth_params.insert("oauth_token", access_token);
-        oauth_params.insert("oauth_version", "1.0");
-
-        // Merge additional parameters (query/body) for signature base string generation
-        let mut all_params = oauth_params.clone();
-        let extra_params = url.query_pairs().into_owned().collect::<BTreeMap<_, _>>();
-        for (key, value) in &extra_params {
-            all_params.insert(key, value);
-        }
-
-        // 1. Sort all parameters alphabetically by key
-        let parameter_string = all_params
-            .iter()
-            .map(|(key, value)| format!("{}={}", url_encode(key), url_encode(value)))
-            .collect::<Vec<String>>()
-            .join("&");
-
-        // 2. Create the signature base string
-
-        // The result is the clean URL required by the OAuth 1.0a spec
-        let url_to_sign = {
-            let mut signing_url = url.clone();
-            signing_url.set_query(None);
-            signing_url.set_fragment(None);
-            signing_url.to_string()
-        };
-
-        let base_string = format!(
-            "{}&{}&{}",
-            method.to_uppercase(),
-            url_encode(&url_to_sign),
-            url_encode(&parameter_string)
-        );
-
-        // 3. Generate the signing key
-        let signing_key = format!(
-            "{}&{}",
-            url_encode(consumer_api_secret),
-            url_encode(token_secret)
-        );
-
-        // 4. Sign the base string with the signing key using HMAC-SHA1
-        let mut mac = HmacSha1::new_from_slice(signing_key.as_bytes())
-            .expect("HMAC can be initialized with key");
-        mac.update(base_string.as_bytes());
-        let signature = mac.finalize().into_bytes();
-        let signature_base64 = BASE64_STANDARD.encode(signature);
-
-        // Add the signature to the OAuth parameters
-        oauth_params.insert("oauth_signature", &signature_base64);
-
-        // 5. Build the Authorization header string (note: use original oauth_params, not all_params)
-        let auth_header_value = oauth_params
-            .iter()
-            .map(|(key, value)| format!("{}=\"{}\"", key, url_encode(value)))
-            .collect::<Vec<String>>()
-            .join(", ");
-
-        let header = format!("OAuth {}", auth_header_value);
-        Ok(header)
+        Ok(oauth1_authorization_header(
+            method,
+            url,
+            &self.consumer_api_key,
+            consumer_api_secret,
+            Some((access_token, token_secret)),
+        ))
     }
 }
 
@@ -641,4 +588,55 @@ pub(crate) struct Pages {
     // pub(crate) last_page: String,
     #[serde(rename = "NextPage")]
     pub(crate) next_page: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn query(url: &url::Url) -> Vec<(String, String)> {
+        url.query_pairs().into_owned().collect()
+    }
+
+    #[test]
+    fn first_page_url_gets_params() {
+        let url = api_url_with_params(
+            "/api/v2/album/pJk78v!images",
+            &[("_expand", "ImageMetadata"), ("_verbosity", "1")],
+        )
+        .unwrap();
+        assert_eq!(url.path(), "/api/v2/album/pJk78v!images");
+        assert_eq!(
+            query(&url),
+            vec![
+                ("_expand".to_string(), "ImageMetadata".to_string()),
+                ("_verbosity".to_string(), "1".to_string())
+            ]
+        );
+    }
+
+    // NextPage as SmugMug returns it: start/count/_expand kept, _expandmethod/_verbosity dropped
+    #[test]
+    fn next_page_url_gets_missing_params_back() {
+        let url = api_url_with_params(
+            "/api/v2/album/pJk78v!images?count=2&_expand=ImageMetadata&start=3",
+            &[
+                ("_expand", "ImageMetadata"),
+                ("_expandmethod", "inline"),
+                ("count", "1000"),
+                ("_verbosity", "1"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            query(&url),
+            vec![
+                ("count".to_string(), "2".to_string()),
+                ("_expand".to_string(), "ImageMetadata".to_string()),
+                ("start".to_string(), "3".to_string()),
+                ("_expandmethod".to_string(), "inline".to_string()),
+                ("_verbosity".to_string(), "1".to_string())
+            ]
+        );
+    }
 }

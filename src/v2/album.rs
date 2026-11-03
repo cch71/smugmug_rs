@@ -11,7 +11,8 @@ use crate::v2::macros::{
     stream_children_from_url,
 };
 use crate::v2::parsers::{from_privacy, is_none_or_empty_str};
-use crate::v2::{Client, Image, Pages, PrivacyLevel, API_ORIGIN};
+use crate::v2::image_metadata::ExpandedAlbumImage;
+use crate::v2::{API_ORIGIN, Client, Image, ImageWithMetadata, Pages, PrivacyLevel};
 use async_stream::try_stream;
 use chrono::{DateTime, Utc};
 use futures::Stream;
@@ -118,7 +119,7 @@ impl Album {
     }
 
     /// Retrieves information about the images associated with this Album
-    pub fn images(&self) -> Result<impl Stream<Item=Result<Image, SmugMugError>>, SmugMugError> {
+    pub fn images(&self) -> Result<impl Stream<Item = Result<Image, SmugMugError>>, SmugMugError> {
         self.images_with_client(
             self.client
                 .as_ref()
@@ -131,7 +132,7 @@ impl Album {
     pub fn images_with_client(
         &self,
         client: Client,
-    ) -> Result<impl Stream<Item=Result<Image, SmugMugError>>, SmugMugError> {
+    ) -> Result<impl Stream<Item = Result<Image, SmugMugError>>, SmugMugError> {
         // Build up the query parameters
         let params: Vec<(&str, &str)> = Vec::new();
 
@@ -141,6 +142,53 @@ impl Album {
             &params,
             AlbumImagesResponse,
             images
+        ))
+    }
+
+    /// Number of images requested per page by [`Self::images_with_metadata`]
+    pub const IMAGES_WITH_METADATA_PAGE_SIZE: &'static str = "1000";
+
+    /// Retrieves the images in this Album together with each image's EXIF/IPTC metadata.
+    ///
+    /// This uses an inline `ImageMetadata` expansion, so one request returns a whole page of
+    /// images with their metadata instead of one extra request per image.
+    pub fn images_with_metadata(
+        &self,
+    ) -> Result<impl Stream<Item = Result<ImageWithMetadata, SmugMugError>>, SmugMugError> {
+        self.images_with_metadata_with_client(
+            self.client
+                .as_ref()
+                .ok_or(SmugMugError::ClientNotFound())?
+                .clone(),
+        )
+    }
+
+    /// Retrieves the images in this Album together with their metadata using the provided client.
+    /// See [`Self::images_with_metadata`].
+    pub fn images_with_metadata_with_client(
+        &self,
+        client: Client,
+    ) -> Result<impl Stream<Item = Result<ImageWithMetadata, SmugMugError>>, SmugMugError> {
+        let params: Vec<(&str, &str)> = vec![
+            ("_expand", "ImageMetadata"),
+            ("_expandmethod", "inline"),
+            ("count", Self::IMAGES_WITH_METADATA_PAGE_SIZE),
+        ];
+
+        Ok(stream_children_from_url!(
+            client,
+            self.uris.album_images.as_ref(),
+            &params,
+            AlbumImagesWithMetadataResponse,
+            images,
+            |item| {
+                let mut image = item.image;
+                image.client = Some(client.clone());
+                ImageWithMetadata {
+                    image,
+                    metadata: item.uris.image_metadata.and_then(|v| v.image_metadata),
+                }
+            }
         ))
     }
 
@@ -317,8 +365,20 @@ struct AlbumsResponse {
 // Expected response for a request to get an Album's images
 #[derive(Deserialize, Debug)]
 struct AlbumImagesResponse {
-    #[serde(rename = "AlbumImage")]
+    // Missing when the listing is empty
+    #[serde(default, rename = "AlbumImage")]
     images: Vec<Image>,
+
+    #[serde(rename = "Pages")]
+    pages: Option<Pages>,
+}
+
+// Expected response for a request to get an Album's images with inline metadata
+#[derive(Deserialize, Debug)]
+struct AlbumImagesWithMetadataResponse {
+    // Missing when the listing is empty
+    #[serde(default, rename = "AlbumImage")]
+    images: Vec<ExpandedAlbumImage>,
 
     #[serde(rename = "Pages")]
     pages: Option<Pages>,
