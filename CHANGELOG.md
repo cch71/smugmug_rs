@@ -6,6 +6,8 @@ workflow publishes it as the GitHub release notes for the version's tag.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-03
+
 ## [0.9.0] - 2026-11-03
 
 - Fixed the build with `rand` 0.10 and `hmac` 0.13.
