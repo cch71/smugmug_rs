@@ -1579,6 +1579,7 @@ dependencies = [
  "dotenvy",
  "env_logger",
  "futures",
+ "getrandom 0.4.3",
  "hmac",
  "log",
  "md5",

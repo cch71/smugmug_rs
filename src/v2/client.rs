@@ -20,7 +20,8 @@ use std::sync::{Arc, RwLock};
 pub(crate) const API_ORIGIN: &str = "https://api.smugmug.com";
 
 // Builds a full API url from a uri (which may already carry a query, such as a `Pages.NextPage`
-// uri) and adds any of the given params whose key isn't already in the query.
+// uri) and adds any of the given params whose key isn't already in the query.  If a key is
+// given more than once, the first value is used.
 //
 // SmugMug's `NextPage` keeps `start`/`count` but drops other params such as `_verbosity`,
 // `_expandmethod` and sometimes `_expand`, so paging has to put them back.
@@ -29,11 +30,14 @@ pub(crate) fn api_url_with_params(
     params: &ApiParams<'_>,
 ) -> Result<url::Url, SmugMugError> {
     let mut req_url = url::Url::parse(API_ORIGIN)?.join(uri)?;
-    let existing: Vec<String> = req_url.query_pairs().map(|(k, _)| k.into_owned()).collect();
-    let missing: Vec<_> = params
-        .iter()
-        .filter(|(k, _)| !existing.iter().any(|e| e == k))
-        .collect();
+    let mut existing: Vec<String> = req_url.query_pairs().map(|(k, _)| k.into_owned()).collect();
+    let mut missing = Vec::new();
+    for (k, v) in params {
+        if !existing.iter().any(|e| e == k) {
+            existing.push(k.to_string());
+            missing.push((k, v));
+        }
+    }
     if !missing.is_empty() {
         req_url.query_pairs_mut().extend_pairs(missing);
     }
@@ -300,7 +304,7 @@ impl ClientRef {
         // Pull out the payload
         match serde_json::from_slice::<ResponseBody<T>>(payload_bytes.as_ref()) {
             Ok(body) => {
-                if !body.is_code_an_error()? {
+                if !body.is_success() {
                     return Err(SmugMugError::ApiResponse(body.code, body.message));
                 }
                 Ok(Response {
@@ -371,7 +375,7 @@ pub enum ApiErrorCodes {
     NotFound = 404,
     MethodNotAllowed = 405,
     BadAccept = 406,
-    Conflict = 407,
+    Conflict = 409,
     TooManyRequests = 429,
     InternalServerError = 500,
     ServiceUnavailable = 503,
@@ -532,7 +536,7 @@ impl std::fmt::Debug for Creds {
             )
             .field(
                 "token_secret",
-                &self.access_token.as_ref().map_or("", |_| "xxx"),
+                &self.token_secret.as_ref().map_or("", |_| "xxx"),
             )
             .finish()
     }
@@ -552,17 +556,18 @@ struct ResponseBody<ResponseType> {
 }
 
 impl<ResponseType> ResponseBody<ResponseType> {
-    /// Determine if the code returned in the response body is an error based on SmugMug API Docs
-    fn is_code_an_error(&self) -> Result<bool, SmugMugError> {
+    // Determine if the code returned in the response body is a success based on SmugMug API
+    // Docs.  Codes not in ApiErrorCodes are errors, so the caller keeps SmugMug's message.
+    fn is_success(&self) -> bool {
         use ApiErrorCodes as E;
-        match ApiErrorCodes::try_from(self.code)? {
-            E::Accepted
-            | E::Ok
-            | E::CreatedSuccessfully
-            | E::MovedPermanently
-            | E::MovedTemporarily => Ok(true),
-            _ => Ok(false),
-        }
+        matches!(
+            ApiErrorCodes::try_from(self.code),
+            Ok(E::Accepted
+                | E::Ok
+                | E::CreatedSuccessfully
+                | E::MovedPermanently
+                | E::MovedTemporarily)
+        )
     }
 }
 
@@ -613,6 +618,31 @@ mod tests {
                 ("_verbosity".to_string(), "1".to_string())
             ]
         );
+    }
+
+    #[test]
+    fn repeated_param_is_added_once() {
+        let url = api_url_with_params(
+            "/api/v2/node/x!children",
+            &[("_verbosity", "1"), ("_verbosity", "2")],
+        )
+        .unwrap();
+        assert_eq!(query(&url), vec![("_verbosity".to_string(), "1".to_string())]);
+    }
+
+    #[test]
+    fn unknown_response_code_is_an_error() {
+        let body = |code| ResponseBody::<()> {
+            code,
+            message: String::new(),
+            response: None,
+        };
+        assert!(body(200).is_success());
+        assert!(body(301).is_success());
+        assert!(!body(404).is_success());
+        // Not in ApiErrorCodes
+        assert!(!body(422).is_success());
+        assert!(!body(409).is_success());
     }
 
     // NextPage as SmugMug returns it: start/count/_expand kept, _expandmethod/_verbosity dropped

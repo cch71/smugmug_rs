@@ -164,7 +164,12 @@ impl Node {
         client: Client,
         album_props: CreateAlbumProps,
     ) -> Result<Album, SmugMugError> {
-        let children_uri = self.uris.child_nodes.as_ref().unwrap(); //Should always be true right?
+        // Only folders have child nodes that albums can be created in
+        let children_uri = self
+            .uris
+            .child_nodes
+            .as_ref()
+            .ok_or(SmugMugError::NotAFolder())?;
         let req_url = url::Url::parse(API_ORIGIN)?.join(children_uri)?;
         let params = vec![("_verbosity", "1")];
 

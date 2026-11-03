@@ -9,7 +9,7 @@ use crate::v2::errors::SmugMugError;
 use crate::v2::macros::{
     obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice,
 };
-use crate::v2::parsers::from_lenient_datetime;
+use crate::v2::parsers::{from_lenient_datetime, from_lenient_u64};
 use crate::v2::{API_ORIGIN, Client, ImageMetadata, LargestVideo};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -95,12 +95,18 @@ pub struct Image {
 
     /// Revision of the image, bumped when the image is replaced.  Together with the image key
     /// (`KEY-SERIAL`) it identifies the image for the per image endpoints.
-    #[serde(default, rename = "Serial", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "Serial",
+        deserialize_with = "from_lenient_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub serial: Option<u64>,
 
     #[serde(
         default,
         rename = "OriginalWidth",
+        deserialize_with = "from_lenient_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub original_width: Option<u64>,
@@ -108,6 +114,7 @@ pub struct Image {
     #[serde(
         default,
         rename = "OriginalHeight",
+        deserialize_with = "from_lenient_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub original_height: Option<u64>,
@@ -116,6 +123,7 @@ pub struct Image {
     #[serde(
         default,
         rename = "OriginalSize",
+        deserialize_with = "from_lenient_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub original_size: Option<u64>,
@@ -166,14 +174,15 @@ impl Image {
         obj_update_from_url!(client, req_url.as_str(), data, ImageResponse, image)
     }
 
-    /// Retrieves the image data found at the archive uri
+    /// Retrieves the image data found at the archive uri using the provided client.
+    /// See [`Self::get_archive`].
     pub async fn get_archive_with_client(&self, client: Client) -> Result<Bytes, SmugMugError> {
         match self.archived_uri.as_ref() {
-            Some(archived_uri) => Ok(client
+            Some(archived_uri) => client
                 .get_binary_data(archived_uri, None)
                 .await?
                 .payload
-                .unwrap()),
+                .ok_or(SmugMugError::ResponseMissing()),
             None => Err(SmugMugError::ImageArchiveNotFound(
                 self.file_name.clone(),
                 self.image_key.clone(),
@@ -181,16 +190,12 @@ impl Image {
         }
     }
 
-    /// Retrieves the archive (original) image data using the internal client
+    /// Retrieves the image data found at the archive uri using the internal client.
+    ///
+    /// For photos this is the original upload.  For videos it is only a JPEG poster frame; use
+    /// [`Self::largest_video`] to get the video.
     pub async fn get_archive(&self) -> Result<Bytes, SmugMugError> {
-        self.get_archive_with_client(
-            self.client
-                .as_ref()
-                .ok_or(SmugMugError::ClientNotFound())
-                .unwrap()
-                .clone(),
-        )
-        .await
+        self.get_archive_with_client(self.client()?).await
     }
 
     /// Returns the image key with its serial (e.g. `KEY-0`), which the per image endpoints such
@@ -258,9 +263,10 @@ impl Image {
                 v.client = Some(client.clone());
                 v
             })),
-            // Images that aren't videos return a 404
+            // Images that aren't videos return a 404.  For a video a 404 is a real error, such
+            // as a deleted image or a stale serial, so it is returned.
             Err(SmugMugError::Request(err))
-                if err.status() == Some(reqwest::StatusCode::NOT_FOUND) =>
+                if !self.is_video && err.status() == Some(reqwest::StatusCode::NOT_FOUND) =>
             {
                 Ok(None)
             }

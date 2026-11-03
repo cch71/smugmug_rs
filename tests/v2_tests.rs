@@ -286,7 +286,7 @@ mod test {
         while let Some(result) = images.next().await {
             let item = result.unwrap();
             assert!(item.image.serial.is_some());
-            assert!(item.metadata.unwrap().fields.len() > 50);
+            assert!(item.metadata.unwrap().fields().len() > 50);
             count += 1;
         }
         assert_eq!(count, album.image_count);
@@ -301,11 +301,11 @@ mod test {
         let video = Image::from_id(client.clone(), "xVhzRzQ-0").await.unwrap();
         assert!(video.is_video);
         let metadata = video.metadata().await.unwrap();
-        assert!(metadata.video_codec.is_some());
+        assert!(metadata.video_codec().is_some());
 
         let largest = video.largest_video().await.unwrap().unwrap();
         let data = largest.download().await.unwrap();
-        assert_eq!(data.len() as u64, largest.size);
+        assert_eq!(Some(data.len() as u64), largest.size);
         assert_eq!(
             Some(format!("{:x}", md5::compute(data))),
             largest.md5

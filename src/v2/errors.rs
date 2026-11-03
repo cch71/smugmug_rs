@@ -32,6 +32,9 @@ pub enum SmugMugError {
     #[error("This is not an album")]
     NotAnAlbum(),
 
+    #[error("This is not a folder")]
+    NotAFolder(),
+
     #[error("Client not found")]
     ClientNotFound(),
 

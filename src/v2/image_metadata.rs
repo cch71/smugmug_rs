@@ -13,54 +13,34 @@ use serde_json::{Map, Value};
 /// EXIF/IPTC metadata SmugMug read from an image's file when it was uploaded.
 ///
 /// SmugMug keeps this even when the downloadable file has had its EXIF stripped.  The common
-/// fields are typed; empty values are `None`.  Every field the API returned (about 78) is kept
-/// in [`Self::fields`], and serializing writes that map back out unchanged.
+/// fields have typed accessors such as [`Self::make`] and [`Self::iso`], which return `None`
+/// for empty values.  Every field the API returned (about 78) is in [`Self::fields`], and
+/// serializing writes that map back out unchanged.
+///
+/// The data is read-only, so the typed accessors and [`Self::fields`] always agree.  To change
+/// it, take the map with [`Self::into_fields`] and deserialize a new value from it.
 ///
 /// See [SmugMug API Docs](https://api.smugmug.com/api/v2/doc/reference/image-metadata.html) for
 /// more details on the individual fields.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ImageMetadata {
-    pub uri: Option<String>,
-    pub title: Option<String>,
-    pub caption: Option<String>,
-    pub keywords: Option<String>,
-    pub author: Option<String>,
-    pub copyright: Option<String>,
-    pub make: Option<String>,
-    pub model: Option<String>,
-    pub lens: Option<String>,
-    pub serial_number: Option<String>,
-    pub software: Option<String>,
-    pub date_time_created: Option<String>,
-    pub date_digitized: Option<String>,
-    pub date_time_modified: Option<String>,
-    pub micro_date_time_created: Option<String>,
-    pub exposure: Option<String>,
-    pub aperture: Option<String>,
-    pub focal_length: Option<String>,
-    pub focal_length_35mm: Option<String>,
-    pub flash: Option<String>,
-    pub white_balance: Option<String>,
-    pub exposure_mode: Option<String>,
-    pub exposure_program: Option<String>,
-    pub metering: Option<String>,
-    pub color_space: Option<String>,
-    pub altitude: Option<String>,
-    pub duration: Option<String>,
-    pub video_codec: Option<String>,
-    pub audio_codec: Option<String>,
-    pub city: Option<String>,
-    pub state: Option<String>,
-    pub country: Option<String>,
-    pub latitude: Option<f64>,
-    pub longitude: Option<f64>,
-    pub iso: Option<u64>,
+    // Parsed from `fields` when deserializing
+    typed: TypedImageMetadata,
 
-    /// Every field returned by the API, keyed by the SmugMug field name
-    pub fields: Map<String, Value>,
+    fields: Map<String, Value>,
 }
 
 impl ImageMetadata {
+    /// Every field returned by the API, keyed by the SmugMug field name
+    pub fn fields(&self) -> &Map<String, Value> {
+        &self.fields
+    }
+
+    /// Takes every field returned by the API, keyed by the SmugMug field name
+    pub fn into_fields(self) -> Map<String, Value> {
+        self.fields
+    }
+
     /// Returns the raw value of the given SmugMug field (e.g. `"SceneCaptureType"`)
     pub fn get(&self, field: &str) -> Option<&Value> {
         self.fields.get(field)
@@ -69,7 +49,182 @@ impl ImageMetadata {
     /// Returns true if SmugMug has a location for this image.  SmugMug reports a 0/0
     /// latitude/longitude when there isn't one.
     pub fn has_location(&self) -> bool {
-        matches!((self.latitude, self.longitude), (Some(lat), Some(lon)) if lat != 0.0 || lon != 0.0)
+        matches!((self.latitude(), self.longitude()), (Some(lat), Some(lon)) if lat != 0.0 || lon != 0.0)
+    }
+
+    /// The `Uri` field. Uri of the metadata endpoint for this image
+    pub fn uri(&self) -> Option<&str> {
+        self.typed.uri.as_deref()
+    }
+
+    /// The `Title` field
+    pub fn title(&self) -> Option<&str> {
+        self.typed.title.as_deref()
+    }
+
+    /// The `Caption` field
+    pub fn caption(&self) -> Option<&str> {
+        self.typed.caption.as_deref()
+    }
+
+    /// The `Keywords` field
+    pub fn keywords(&self) -> Option<&str> {
+        self.typed.keywords.as_deref()
+    }
+
+    /// The `Author` field
+    pub fn author(&self) -> Option<&str> {
+        self.typed.author.as_deref()
+    }
+
+    /// The `Copyright` field
+    pub fn copyright(&self) -> Option<&str> {
+        self.typed.copyright.as_deref()
+    }
+
+    /// The `Make` field. Camera maker
+    pub fn make(&self) -> Option<&str> {
+        self.typed.make.as_deref()
+    }
+
+    /// The `Model` field. Camera model
+    pub fn model(&self) -> Option<&str> {
+        self.typed.model.as_deref()
+    }
+
+    /// The `Lens` field
+    pub fn lens(&self) -> Option<&str> {
+        self.typed.lens.as_deref()
+    }
+
+    /// The `SerialNumber` field. Camera serial number
+    pub fn serial_number(&self) -> Option<&str> {
+        self.typed.serial_number.as_deref()
+    }
+
+    /// The `Software` field. Software or firmware that wrote the file
+    pub fn software(&self) -> Option<&str> {
+        self.typed.software.as_deref()
+    }
+
+    /// The `DateTimeCreated` field. Capture time as written in the file. Usually local time without an offset, e.g. `2026-08-08T08:31:55`
+    pub fn date_time_created(&self) -> Option<&str> {
+        self.typed.date_time_created.as_deref()
+    }
+
+    /// The `DateDigitized` field. Digitized time as written in the file, usually without an offset
+    pub fn date_digitized(&self) -> Option<&str> {
+        self.typed.date_digitized.as_deref()
+    }
+
+    /// The `DateTimeModified` field
+    pub fn date_time_modified(&self) -> Option<&str> {
+        self.typed.date_time_modified.as_deref()
+    }
+
+    /// The `MicroDateTimeCreated` field. Capture time with sub-second precision and, when the file has one, its offset
+    pub fn micro_date_time_created(&self) -> Option<&str> {
+        self.typed.micro_date_time_created.as_deref()
+    }
+
+    /// The `Exposure` field. Exposure time, e.g. `1/167`
+    pub fn exposure(&self) -> Option<&str> {
+        self.typed.exposure.as_deref()
+    }
+
+    /// The `Aperture` field. F-number, e.g. `1.8`
+    pub fn aperture(&self) -> Option<&str> {
+        self.typed.aperture.as_deref()
+    }
+
+    /// The `FocalLength` field. e.g. `5.4 mm`
+    pub fn focal_length(&self) -> Option<&str> {
+        self.typed.focal_length.as_deref()
+    }
+
+    /// The `FocalLength35mm` field
+    pub fn focal_length_35mm(&self) -> Option<&str> {
+        self.typed.focal_length_35mm.as_deref()
+    }
+
+    /// The `Flash` field. e.g. `No Flash`
+    pub fn flash(&self) -> Option<&str> {
+        self.typed.flash.as_deref()
+    }
+
+    /// The `WhiteBalance` field
+    pub fn white_balance(&self) -> Option<&str> {
+        self.typed.white_balance.as_deref()
+    }
+
+    /// The `ExposureMode` field
+    pub fn exposure_mode(&self) -> Option<&str> {
+        self.typed.exposure_mode.as_deref()
+    }
+
+    /// The `ExposureProgram` field
+    pub fn exposure_program(&self) -> Option<&str> {
+        self.typed.exposure_program.as_deref()
+    }
+
+    /// The `Metering` field
+    pub fn metering(&self) -> Option<&str> {
+        self.typed.metering.as_deref()
+    }
+
+    /// The `ColorSpace` field
+    pub fn color_space(&self) -> Option<&str> {
+        self.typed.color_space.as_deref()
+    }
+
+    /// The `Altitude` field. Altitude with its unit, e.g. `273.303 m`
+    pub fn altitude(&self) -> Option<&str> {
+        self.typed.altitude.as_deref()
+    }
+
+    /// The `Duration` field. Video duration with its unit, e.g. `11.40 s`
+    pub fn duration(&self) -> Option<&str> {
+        self.typed.duration.as_deref()
+    }
+
+    /// The `VideoCodec` field
+    pub fn video_codec(&self) -> Option<&str> {
+        self.typed.video_codec.as_deref()
+    }
+
+    /// The `AudioCodec` field
+    pub fn audio_codec(&self) -> Option<&str> {
+        self.typed.audio_codec.as_deref()
+    }
+
+    /// The `City` field
+    pub fn city(&self) -> Option<&str> {
+        self.typed.city.as_deref()
+    }
+
+    /// The `State` field
+    pub fn state(&self) -> Option<&str> {
+        self.typed.state.as_deref()
+    }
+
+    /// The `Country` field
+    pub fn country(&self) -> Option<&str> {
+        self.typed.country.as_deref()
+    }
+
+    /// The `Latitude` field. Decimal degrees. SmugMug reports 0 when the file has no location
+    pub fn latitude(&self) -> Option<f64> {
+        self.typed.latitude
+    }
+
+    /// The `Longitude` field. Decimal degrees. SmugMug reports 0 when the file has no location
+    pub fn longitude(&self) -> Option<f64> {
+        self.typed.longitude
+    }
+
+    /// The `ISO` field
+    pub fn iso(&self) -> Option<u64> {
+        self.typed.iso
     }
 }
 
@@ -79,46 +234,9 @@ impl<'de> Deserialize<'de> for ImageMetadata {
         D: Deserializer<'de>,
     {
         let fields = Map::<String, Value>::deserialize(deserializer)?;
-        let typed: TypedImageMetadata = serde_json::from_value(Value::Object(fields.clone()))
+        let typed = TypedImageMetadata::deserialize(Value::Object(fields.clone()))
             .map_err(serde::de::Error::custom)?;
-        Ok(Self {
-            uri: typed.uri,
-            title: typed.title,
-            caption: typed.caption,
-            keywords: typed.keywords,
-            author: typed.author,
-            copyright: typed.copyright,
-            make: typed.make,
-            model: typed.model,
-            lens: typed.lens,
-            serial_number: typed.serial_number,
-            software: typed.software,
-            date_time_created: typed.date_time_created,
-            date_digitized: typed.date_digitized,
-            date_time_modified: typed.date_time_modified,
-            micro_date_time_created: typed.micro_date_time_created,
-            exposure: typed.exposure,
-            aperture: typed.aperture,
-            focal_length: typed.focal_length,
-            focal_length_35mm: typed.focal_length_35mm,
-            flash: typed.flash,
-            white_balance: typed.white_balance,
-            exposure_mode: typed.exposure_mode,
-            exposure_program: typed.exposure_program,
-            metering: typed.metering,
-            color_space: typed.color_space,
-            altitude: typed.altitude,
-            duration: typed.duration,
-            video_codec: typed.video_codec,
-            audio_codec: typed.audio_codec,
-            city: typed.city,
-            state: typed.state,
-            country: typed.country,
-            latitude: typed.latitude,
-            longitude: typed.longitude,
-            iso: typed.iso,
-            fields,
-        })
+        Ok(Self { typed, fields })
     }
 }
 
@@ -132,150 +250,134 @@ impl Serialize for ImageMetadata {
 }
 
 // The typed subset of the metadata fields
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone, Debug, Default, PartialEq)]
 struct TypedImageMetadata {
-    /// Uri of the metadata endpoint for this image
     #[serde(default, rename = "Uri", deserialize_with = "from_lenient_string")]
-    pub uri: Option<String>,
+    uri: Option<String>,
     #[serde(default, rename = "Title", deserialize_with = "from_lenient_string")]
-    pub title: Option<String>,
+    title: Option<String>,
     #[serde(default, rename = "Caption", deserialize_with = "from_lenient_string")]
-    pub caption: Option<String>,
+    caption: Option<String>,
     #[serde(default, rename = "Keywords", deserialize_with = "from_lenient_string")]
-    pub keywords: Option<String>,
+    keywords: Option<String>,
     #[serde(default, rename = "Author", deserialize_with = "from_lenient_string")]
-    pub author: Option<String>,
+    author: Option<String>,
     #[serde(
         default,
         rename = "Copyright",
         deserialize_with = "from_lenient_string"
     )]
-    pub copyright: Option<String>,
-    /// Camera maker
+    copyright: Option<String>,
     #[serde(default, rename = "Make", deserialize_with = "from_lenient_string")]
-    pub make: Option<String>,
-    /// Camera model
+    make: Option<String>,
     #[serde(default, rename = "Model", deserialize_with = "from_lenient_string")]
-    pub model: Option<String>,
+    model: Option<String>,
     #[serde(default, rename = "Lens", deserialize_with = "from_lenient_string")]
-    pub lens: Option<String>,
-    /// Camera serial number
+    lens: Option<String>,
     #[serde(
         default,
         rename = "SerialNumber",
         deserialize_with = "from_lenient_string"
     )]
-    pub serial_number: Option<String>,
-    /// Software or firmware that wrote the file
+    serial_number: Option<String>,
     #[serde(default, rename = "Software", deserialize_with = "from_lenient_string")]
-    pub software: Option<String>,
-    /// Capture time as written in the file. Usually local time without an offset, e.g. `2026-08-08T08:31:55`
+    software: Option<String>,
     #[serde(
         default,
         rename = "DateTimeCreated",
         deserialize_with = "from_lenient_string"
     )]
-    pub date_time_created: Option<String>,
-    /// Digitized time as written in the file, usually without an offset
+    date_time_created: Option<String>,
     #[serde(
         default,
         rename = "DateDigitized",
         deserialize_with = "from_lenient_string"
     )]
-    pub date_digitized: Option<String>,
+    date_digitized: Option<String>,
     #[serde(
         default,
         rename = "DateTimeModified",
         deserialize_with = "from_lenient_string"
     )]
-    pub date_time_modified: Option<String>,
-    /// Capture time with sub-second precision and, when the file has one, its offset
+    date_time_modified: Option<String>,
     #[serde(
         default,
         rename = "MicroDateTimeCreated",
         deserialize_with = "from_lenient_string"
     )]
-    pub micro_date_time_created: Option<String>,
-    /// Exposure time, e.g. `1/167`
+    micro_date_time_created: Option<String>,
     #[serde(default, rename = "Exposure", deserialize_with = "from_lenient_string")]
-    pub exposure: Option<String>,
-    /// F-number, e.g. `1.8`
+    exposure: Option<String>,
     #[serde(default, rename = "Aperture", deserialize_with = "from_lenient_string")]
-    pub aperture: Option<String>,
-    /// e.g. `5.4 mm`
+    aperture: Option<String>,
     #[serde(
         default,
         rename = "FocalLength",
         deserialize_with = "from_lenient_string"
     )]
-    pub focal_length: Option<String>,
+    focal_length: Option<String>,
     #[serde(
         default,
         rename = "FocalLength35mm",
         deserialize_with = "from_lenient_string"
     )]
-    pub focal_length_35mm: Option<String>,
-    /// e.g. `No Flash`
+    focal_length_35mm: Option<String>,
     #[serde(default, rename = "Flash", deserialize_with = "from_lenient_string")]
-    pub flash: Option<String>,
+    flash: Option<String>,
     #[serde(
         default,
         rename = "WhiteBalance",
         deserialize_with = "from_lenient_string"
     )]
-    pub white_balance: Option<String>,
+    white_balance: Option<String>,
     #[serde(
         default,
         rename = "ExposureMode",
         deserialize_with = "from_lenient_string"
     )]
-    pub exposure_mode: Option<String>,
+    exposure_mode: Option<String>,
     #[serde(
         default,
         rename = "ExposureProgram",
         deserialize_with = "from_lenient_string"
     )]
-    pub exposure_program: Option<String>,
+    exposure_program: Option<String>,
     #[serde(default, rename = "Metering", deserialize_with = "from_lenient_string")]
-    pub metering: Option<String>,
+    metering: Option<String>,
     #[serde(
         default,
         rename = "ColorSpace",
         deserialize_with = "from_lenient_string"
     )]
-    pub color_space: Option<String>,
-    /// Altitude with its unit, e.g. `273.303 m`
+    color_space: Option<String>,
     #[serde(default, rename = "Altitude", deserialize_with = "from_lenient_string")]
-    pub altitude: Option<String>,
-    /// Video duration with its unit, e.g. `11.40 s`
+    altitude: Option<String>,
     #[serde(default, rename = "Duration", deserialize_with = "from_lenient_string")]
-    pub duration: Option<String>,
+    duration: Option<String>,
     #[serde(
         default,
         rename = "VideoCodec",
         deserialize_with = "from_lenient_string"
     )]
-    pub video_codec: Option<String>,
+    video_codec: Option<String>,
     #[serde(
         default,
         rename = "AudioCodec",
         deserialize_with = "from_lenient_string"
     )]
-    pub audio_codec: Option<String>,
+    audio_codec: Option<String>,
     #[serde(default, rename = "City", deserialize_with = "from_lenient_string")]
-    pub city: Option<String>,
+    city: Option<String>,
     #[serde(default, rename = "State", deserialize_with = "from_lenient_string")]
-    pub state: Option<String>,
+    state: Option<String>,
     #[serde(default, rename = "Country", deserialize_with = "from_lenient_string")]
-    pub country: Option<String>,
-    /// Decimal degrees. SmugMug reports 0 when the file has no location
+    country: Option<String>,
     #[serde(default, rename = "Latitude", deserialize_with = "from_lenient_f64")]
-    pub latitude: Option<f64>,
-    /// Decimal degrees. SmugMug reports 0 when the file has no location
+    latitude: Option<f64>,
     #[serde(default, rename = "Longitude", deserialize_with = "from_lenient_f64")]
-    pub longitude: Option<f64>,
+    longitude: Option<f64>,
     #[serde(default, rename = "ISO", deserialize_with = "from_lenient_u64")]
-    pub iso: Option<u64>,
+    iso: Option<u64>,
 }
 
 /// An image together with its metadata, as returned by [`crate::v2::Album::images_with_metadata`]
@@ -331,14 +433,14 @@ mod tests {
     #[test]
     fn parses_photo_metadata() {
         let metadata: ImageMetadata = serde_json::from_value(photo_metadata()).unwrap();
-        assert_eq!(metadata.make.as_deref(), Some("samsung"));
-        assert_eq!(metadata.model.as_deref(), Some("SM-G991U"));
-        assert_eq!(metadata.iso, Some(40));
-        assert_eq!(metadata.aperture.as_deref(), Some("1.8"));
-        assert_eq!(metadata.date_digitized.as_deref(), Some("2026-08-08T08:31:55"));
-        assert_eq!(metadata.altitude.as_deref(), Some("0"));
-        assert_eq!(metadata.caption, None);
-        assert_eq!(metadata.audio_codec, None);
+        assert_eq!(metadata.make(), Some("samsung"));
+        assert_eq!(metadata.model(), Some("SM-G991U"));
+        assert_eq!(metadata.iso(), Some(40));
+        assert_eq!(metadata.aperture(), Some("1.8"));
+        assert_eq!(metadata.date_digitized(), Some("2026-08-08T08:31:55"));
+        assert_eq!(metadata.altitude(), Some("0"));
+        assert_eq!(metadata.caption(), None);
+        assert_eq!(metadata.audio_codec(), None);
         assert!(!metadata.has_location());
         assert_eq!(metadata.get("SceneCaptureType"), Some(&json!("Standard")));
     }
@@ -350,11 +452,11 @@ mod tests {
             "Latitude": 30.5568, "Longitude": "-97.7326", "VideoCodec": "H.264"
         }))
         .unwrap();
-        assert_eq!(metadata.altitude.as_deref(), Some("273.303 m"));
-        assert_eq!(metadata.duration.as_deref(), Some("11.40 s"));
-        assert_eq!(metadata.iso, None);
-        assert_eq!(metadata.latitude, Some(30.5568));
-        assert_eq!(metadata.longitude, Some(-97.7326));
+        assert_eq!(metadata.altitude(), Some("273.303 m"));
+        assert_eq!(metadata.duration(), Some("11.40 s"));
+        assert_eq!(metadata.iso(), None);
+        assert_eq!(metadata.latitude(), Some(30.5568));
+        assert_eq!(metadata.longitude(), Some(-97.7326));
         assert!(metadata.has_location());
     }
 
@@ -401,6 +503,6 @@ mod tests {
         );
         assert_eq!(item.image.key_with_serial(), "Mzf2k5x-0");
         let metadata = item.uris.image_metadata.unwrap().image_metadata.unwrap();
-        assert_eq!(metadata.make.as_deref(), Some("samsung"));
+        assert_eq!(metadata.make(), Some("samsung"));
     }
 }

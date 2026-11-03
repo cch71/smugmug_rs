@@ -29,8 +29,13 @@ pub struct LargestVideo {
     pub url: String,
 
     /// Size of the video in bytes
-    #[serde(rename = "Size")]
-    pub size: u64,
+    #[serde(
+        default,
+        rename = "Size",
+        deserialize_with = "from_lenient_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub size: Option<u64>,
 
     #[serde(default, rename = "MD5", skip_serializing_if = "Option::is_none")]
     pub md5: Option<String>,
@@ -120,7 +125,7 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(video.url, "https://photos.smugmug.com/video.mp4");
-        assert_eq!(video.size, 10950743);
+        assert_eq!(video.size, Some(10950743));
         assert_eq!(video.md5.as_deref(), Some("d0474a16e45ea087cd5eead0bbd94edb"));
         assert_eq!(video.ext, "mp4");
         assert_eq!((video.width, video.height), (Some(1920), Some(1080)));

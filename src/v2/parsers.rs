@@ -64,16 +64,27 @@ where
     })
 }
 
-// Parses a number or numeric string as an optional u64
+// Parses a number or numeric string as an optional u64.  Whole floats such as `40.0` are
+// accepted; negative or fractional values become None.
 pub fn from_lenient_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     Ok(match Option::<Value>::deserialize(deserializer)? {
-        Some(Value::Number(n)) => n.as_u64(),
-        Some(Value::String(s)) => s.trim().parse().ok(),
+        Some(Value::Number(n)) => n.as_u64().or_else(|| n.as_f64().and_then(whole_f64_to_u64)),
+        Some(Value::String(s)) => {
+            let s = s.trim();
+            s.parse()
+                .ok()
+                .or_else(|| s.parse().ok().and_then(whole_f64_to_u64))
+        }
         _ => None,
     })
+}
+
+// Converts a whole, non-negative f64 to a u64
+fn whole_f64_to_u64(v: f64) -> Option<u64> {
+    (v >= 0.0 && v.fract() == 0.0 && v <= u64::MAX as f64).then_some(v as u64)
 }
 
 // Parses an RFC 3339 date/time string, empty or unparseable values become None
