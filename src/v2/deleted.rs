@@ -5,9 +5,9 @@
  *  - MIT license <http://opensource.org/licenses/MIT>
  *  at your option.
  */
-use crate::v2::parsers::from_lenient_datetime;
 use crate::v2::Pages;
-use chrono::{DateTime, Utc};
+use crate::v2::parsers::from_lenient_datetime;
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 /// An album in the user's trash, from the `!deletedalbums` endpoint.
@@ -34,7 +34,7 @@ pub struct DeletedAlbum {
         deserialize_with = "from_lenient_datetime",
         skip_serializing_if = "Option::is_none"
     )]
-    pub date_added: Option<DateTime<Utc>>,
+    pub date_added: Option<Timestamp>,
 
     #[serde(
         default,
@@ -42,7 +42,7 @@ pub struct DeletedAlbum {
         deserialize_with = "from_lenient_datetime",
         skip_serializing_if = "Option::is_none"
     )]
-    pub date_deleted: Option<DateTime<Utc>>,
+    pub date_deleted: Option<Timestamp>,
 
     #[serde(
         default,
@@ -50,7 +50,7 @@ pub struct DeletedAlbum {
         deserialize_with = "from_lenient_datetime",
         skip_serializing_if = "Option::is_none"
     )]
-    pub date_modified: Option<DateTime<Utc>>,
+    pub date_modified: Option<Timestamp>,
 }
 
 impl DeletedAlbum {
@@ -84,7 +84,7 @@ pub struct DeletedFolder {
         deserialize_with = "from_lenient_datetime",
         skip_serializing_if = "Option::is_none"
     )]
-    pub date_added: Option<DateTime<Utc>>,
+    pub date_added: Option<Timestamp>,
 
     #[serde(
         default,
@@ -92,7 +92,7 @@ pub struct DeletedFolder {
         deserialize_with = "from_lenient_datetime",
         skip_serializing_if = "Option::is_none"
     )]
-    pub date_deleted: Option<DateTime<Utc>>,
+    pub date_deleted: Option<Timestamp>,
 
     #[serde(
         default,
@@ -100,7 +100,7 @@ pub struct DeletedFolder {
         deserialize_with = "from_lenient_datetime",
         skip_serializing_if = "Option::is_none"
     )]
-    pub date_modified: Option<DateTime<Utc>>,
+    pub date_modified: Option<Timestamp>,
 }
 
 impl DeletedFolder {
@@ -158,8 +158,8 @@ mod tests {
         assert_eq!(album.album_key(), "4XDwHf");
         assert_eq!(album.url_path, "/2023-Eagle-Scout-Project");
         assert_eq!(
-            album.date_deleted.unwrap().to_rfc3339(),
-            "2024-10-03T22:19:23+00:00"
+            album.date_deleted.unwrap().to_string(),
+            "2024-10-03T22:19:23Z"
         );
         assert!(albums.pages.unwrap().next_page.is_some());
 

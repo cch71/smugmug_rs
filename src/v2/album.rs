@@ -6,16 +6,16 @@
  *  at your option.
  */
 use crate::v2::errors::SmugMugError;
+use crate::v2::image_metadata::ExpandedAlbumImage;
 use crate::v2::macros::{
     obj_from_url, obj_update_from_uri, obj_update_from_url, objs_from_id_slice,
     stream_children_from_url,
 };
 use crate::v2::parsers::{from_privacy, is_none_or_empty_str};
-use crate::v2::image_metadata::ExpandedAlbumImage;
 use crate::v2::{API_ORIGIN, Client, Image, ImageWithMetadata, Pages, PrivacyLevel};
 use async_stream::try_stream;
-use chrono::{DateTime, Utc};
 use futures::Stream;
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
@@ -82,13 +82,13 @@ pub struct Album {
 
     // Album specific fields
     #[serde(rename = "Date", skip_serializing_if = "Option::is_none")]
-    pub date_created: Option<DateTime<Utc>>,
+    pub date_created: Option<Timestamp>,
 
     #[serde(rename = "ImagesLastUpdated")]
-    pub images_last_updated: DateTime<Utc>,
+    pub images_last_updated: Timestamp,
 
     #[serde(rename = "LastUpdated")]
-    pub last_updated: DateTime<Utc>,
+    pub last_updated: Timestamp,
 
     #[serde(rename = "Uris")]
     uris: AlbumUris,

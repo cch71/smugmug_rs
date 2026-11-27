@@ -19,8 +19,8 @@
 
 use crate::v2::errors::SmugMugError;
 use base64::prelude::*;
-use chrono::Utc;
 use hmac::{Hmac, KeyInit, Mac};
+use jiff::Timestamp;
 use rand::RngExt;
 use rand::distr::Alphanumeric;
 use serde::{Deserialize, Serialize};
@@ -111,7 +111,7 @@ pub fn oauth1_authorization_header(
         .take(32)
         .map(char::from)
         .collect();
-    let timestamp = Utc::now().timestamp().to_string();
+    let timestamp = Timestamp::now().as_second().to_string();
     oauth1_authorization_header_with(
         method,
         url,
@@ -352,8 +352,9 @@ mod tests {
 
     #[test]
     fn oauth1_header_without_token() {
-        let url = url::Url::parse_with_params(OAUTH1_REQUEST_TOKEN_URL, &[("oauth_callback", "oob")])
-            .unwrap();
+        let url =
+            url::Url::parse_with_params(OAUTH1_REQUEST_TOKEN_URL, &[("oauth_callback", "oob")])
+                .unwrap();
         let header = oauth1_authorization_header("POST", &url, CONSUMER_KEY, CONSUMER_SECRET, None);
         assert!(!header.contains("oauth_token="));
         assert!(header.contains("oauth_signature=\""));
@@ -361,9 +362,10 @@ mod tests {
 
     #[test]
     fn parses_token_response() {
-        let token =
-            parse_token_response("oauth_token=abc&oauth_token_secret=d%2Bef&oauth_callback_confirmed=true")
-                .unwrap();
+        let token = parse_token_response(
+            "oauth_token=abc&oauth_token_secret=d%2Bef&oauth_callback_confirmed=true",
+        )
+        .unwrap();
         assert_eq!(token.token, "abc");
         assert_eq!(token.secret, "d+ef");
         assert!(parse_token_response("oauth_problem=bad").is_err());

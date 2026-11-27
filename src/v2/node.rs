@@ -12,12 +12,12 @@ use crate::v2::macros::{
 };
 use crate::v2::parsers::{from_node_type, from_privacy, is_none_or_empty_str};
 use crate::v2::{
-    Album, Client, CreateAlbumProps, NodeType, NodeTypeFilters, Pages, PrivacyLevel, SortDirection,
-    SortMethod, API_ORIGIN,
+    API_ORIGIN, Album, Client, CreateAlbumProps, NodeType, NodeTypeFilters, Pages, PrivacyLevel,
+    SortDirection, SortMethod,
 };
 use async_stream::try_stream;
-use chrono::{DateTime, Utc};
 use futures::Stream;
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
@@ -77,10 +77,10 @@ pub struct Node {
     pub node_type: NodeType,
 
     #[serde(rename = "DateAdded")]
-    pub date_created: DateTime<Utc>,
+    pub date_created: Timestamp,
 
     #[serde(rename = "DateModified")]
-    pub date_modified: DateTime<Utc>,
+    pub date_modified: Timestamp,
 
     #[serde(rename = "Uris")]
     uris: NodeUris,
@@ -143,7 +143,7 @@ impl Node {
                 .clone(),
             req_url.as_str(),
         )
-            .await
+        .await
     }
 
     /// Retrieves the album id if this node is an [`Album`] type
@@ -210,7 +210,7 @@ impl Node {
         filter_by_type: NodeTypeFilters,
         sort_direction: SortDirection,
         sort_method: SortMethod,
-    ) -> Result<impl Stream<Item=Result<Node, SmugMugError>>, SmugMugError> {
+    ) -> Result<impl Stream<Item = Result<Node, SmugMugError>>, SmugMugError> {
         self.children_with_client(
             self.client
                 .as_ref()
@@ -229,7 +229,7 @@ impl Node {
         filter_by_type: NodeTypeFilters,
         sort_direction: SortDirection,
         sort_method: SortMethod,
-    ) -> Result<impl Stream<Item=Result<Node, SmugMugError>>, SmugMugError> {
+    ) -> Result<impl Stream<Item = Result<Node, SmugMugError>>, SmugMugError> {
         // Build up the query parameters
         let mut params: Vec<(&str, &str)> = vec![("SortDirection", sort_direction.into())];
         match filter_by_type {

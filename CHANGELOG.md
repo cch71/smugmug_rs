@@ -6,6 +6,16 @@ workflow publishes it as the GitHub release notes for the version's tag.
 
 ## [Unreleased]
 
+- **Breaking:** replaced the unmaintained `chrono` crate with `jiff`. Every date/time field
+  and method that returned `chrono::DateTime<Utc>` now returns `jiff::Timestamp`, and
+  `jiff` is re-exported as `smugmug::jiff`. Dates are still saved as UTC RFC 3339 strings
+  (`2026-08-08T21:49:34Z`), so JSON saved by older versions loads unchanged and JSON saved
+  by this version loads in older versions.
+  Browser (WASM) builds enable `jiff`'s `js` feature so the current time comes from
+  JavaScript, as `chrono`'s `wasmbind` feature did before.
+- Added WASM tests (`tests/wasm.rs`, run with `wasm-pack test --node -- --test wasm`) and a
+  CI job that runs them.
+
 ## [0.10.0] - 2026-11-03
 
 ## [0.9.0] - 2026-11-03

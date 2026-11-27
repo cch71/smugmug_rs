@@ -5,9 +5,9 @@
  *  - MIT license <http://opensource.org/licenses/MIT>
  *  at your option.
  */
+use crate::v2::Client;
 use crate::v2::errors::SmugMugError;
 use crate::v2::parsers::{from_lenient_string, from_lenient_u64};
-use crate::v2::Client;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
@@ -81,7 +81,11 @@ pub struct LargestVideo {
     #[serde(default, rename = "Usable", skip_serializing_if = "Option::is_none")]
     pub is_usable: Option<bool>,
 
-    #[serde(default, rename = "Watermarked", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "Watermarked",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub is_watermarked: Option<bool>,
 }
 
@@ -126,7 +130,10 @@ mod tests {
         .unwrap();
         assert_eq!(video.url, "https://photos.smugmug.com/video.mp4");
         assert_eq!(video.size, Some(10950743));
-        assert_eq!(video.md5.as_deref(), Some("d0474a16e45ea087cd5eead0bbd94edb"));
+        assert_eq!(
+            video.md5.as_deref(),
+            Some("d0474a16e45ea087cd5eead0bbd94edb")
+        );
         assert_eq!(video.ext, "mp4");
         assert_eq!((video.width, video.height), (Some(1920), Some(1080)));
         assert_eq!(video.duration_seconds(), Some(11.405));

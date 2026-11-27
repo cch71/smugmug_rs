@@ -9,9 +9,9 @@
 extern crate smugmug;
 
 use anyhow::Result;
-use chrono::{Duration, Utc};
 use dotenvy::dotenv;
 use futures::{StreamExt, pin_mut};
+use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
 use smugmug::v2::{Album, Client, Creds, NodeTypeFilters, SortDirection, SortMethod, User};
 use std::fs::File;
@@ -91,9 +91,9 @@ async fn main() -> Result<()> {
     let tokens = get_smugmug_tokens(token_cache.into())?;
 
     // Date to cutoff no matter what just in case some spam/maliciousness is happening
-    let cutoff_from_date_created_dt = Utc::now() - Duration::days(60);
+    let cutoff_from_date_created_dt = Timestamp::now() - SignedDuration::from_hours(60 * 24);
     // Date we use to give leeway from last change time.
-    let last_updated_cutoff_dt = Utc::now() - Duration::days(45);
+    let last_updated_cutoff_dt = Timestamp::now() - SignedDuration::from_hours(45 * 24);
 
     let cleaner = async |album_info: Album| {
         // Because of query sort order we can stop as soon as we get an album that doesn't have

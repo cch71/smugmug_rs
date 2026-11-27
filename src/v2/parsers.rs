@@ -6,7 +6,7 @@
  *  at your option.
  */
 use crate::v2::{NodeType, PrivacyLevel};
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::Deserialize;
 use serde_json::Value;
 use std::str::FromStr;
@@ -88,14 +88,12 @@ fn whole_f64_to_u64(v: f64) -> Option<u64> {
 }
 
 // Parses an RFC 3339 date/time string, empty or unparseable values become None
-pub fn from_lenient_datetime<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+pub fn from_lenient_datetime<'de, D>(deserializer: D) -> Result<Option<Timestamp>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     Ok(match Option::<Value>::deserialize(deserializer)? {
-        Some(Value::String(s)) => DateTime::parse_from_rfc3339(&s)
-            .ok()
-            .map(|v| v.with_timezone(&Utc)),
+        Some(Value::String(s)) => s.parse::<Timestamp>().ok(),
         _ => None,
     })
 }

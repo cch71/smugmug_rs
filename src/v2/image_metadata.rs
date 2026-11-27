@@ -498,8 +498,8 @@ mod tests {
         assert_eq!(item.image.original_height, Some(3024));
         assert_eq!(item.image.original_size, Some(6023161));
         assert_eq!(
-            item.image.date_time_original.unwrap().to_rfc3339(),
-            "2026-08-08T15:31:55+00:00"
+            item.image.date_time_original.unwrap().to_string(),
+            "2026-08-08T15:31:55Z"
         );
         assert_eq!(item.image.key_with_serial(), "Mzf2k5x-0");
         let metadata = item.uris.image_metadata.unwrap().image_metadata.unwrap();

@@ -12,7 +12,7 @@ use crate::v2::macros::{
 use crate::v2::parsers::{from_lenient_datetime, from_lenient_u64};
 use crate::v2::{API_ORIGIN, Client, ImageMetadata, LargestVideo};
 use bytes::Bytes;
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
@@ -79,10 +79,10 @@ pub struct Image {
 
     // Album specific fields
     #[serde(rename = "DateTimeUploaded")]
-    pub date_created: DateTime<Utc>,
+    pub date_created: Timestamp,
 
     #[serde(rename = "LastUpdated")]
-    pub last_updated: DateTime<Utc>,
+    pub last_updated: Timestamp,
 
     /// When the photo or video was taken, as SmugMug read it from the file
     #[serde(
@@ -91,7 +91,7 @@ pub struct Image {
         deserialize_with = "from_lenient_datetime",
         skip_serializing_if = "Option::is_none"
     )]
-    pub date_time_original: Option<DateTime<Utc>>,
+    pub date_time_original: Option<Timestamp>,
 
     /// Revision of the image, bumped when the image is replaced.  Together with the image key
     /// (`KEY-SERIAL`) it identifies the image for the per image endpoints.
@@ -371,6 +371,20 @@ mod tests {
         assert_eq!(image.original_size, None);
         // Saving it again doesn't add the missing fields
         assert_eq!(serde_json::to_value(&image).unwrap(), old_image_json());
+    }
+
+    // Dates are saved the way chrono saved them (UTC, `Z` suffix), so JSON written by older
+    // versions and read by older versions stays compatible
+    #[test]
+    fn dates_are_saved_as_utc_rfc3339() {
+        let mut v = old_image_json();
+        v["DateTimeOriginal"] = json!("2026-08-08T08:31:55-07:00");
+        v["LastUpdated"] = json!("2026-08-08T21:49:35.123456789+00:00");
+        let image: Image = serde_json::from_value(v).unwrap();
+        let saved = serde_json::to_value(&image).unwrap();
+        assert_eq!(saved["DateTimeOriginal"], "2026-08-08T15:31:55Z");
+        assert_eq!(saved["DateTimeUploaded"], "2026-08-08T21:49:34Z");
+        assert_eq!(saved["LastUpdated"], "2026-08-08T21:49:35.123456789Z");
     }
 
     #[test]
