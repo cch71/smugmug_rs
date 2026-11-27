@@ -93,3 +93,7 @@
 //! ```
 //!
 pub mod v2;
+
+/// Re-export of the [`jiff`] crate, whose [`jiff::Timestamp`] is used for every date/time this
+/// crate returns, so callers can use the matching version without adding it themselves.
+pub use jiff;

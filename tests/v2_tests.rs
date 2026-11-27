@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Craig Hamilton and Contributors.
+ * Copyright (c) 2025-2026 Craig Hamilton and Contributors.
  * Licensed under either of
  *  - Apache License, Version 2.0 <http://www.apache.org/licenses/LICENSE-2.0> OR
  *  - MIT license <http://opensource.org/licenses/MIT>
@@ -11,8 +11,8 @@ mod helpers;
 #[cfg(test)]
 mod test {
     use crate::helpers::{get_full_client, get_read_only_client};
-    use chrono::Utc;
     use futures::{StreamExt, pin_mut};
+    use jiff::Timestamp;
     use rand::RngExt;
     use rand::distr::Alphanumeric;
     use serde_json::json;
@@ -26,8 +26,8 @@ mod test {
         let client = get_read_only_client();
         let user_info = User::from_id(client.clone(), "apidemo").await.unwrap();
         let rate_limit = client.get_last_rate_limit_window_update().unwrap();
-        assert!(Utc::now() < rate_limit.window_reset_datetime().unwrap());
-        assert!(0 != rate_limit.num_remaining_requests().unwrap());
+        assert!(Timestamp::now() < rate_limit.window_reset_datetime().unwrap());
+        assert_ne!(0, rate_limit.num_remaining_requests().unwrap());
 
         log::debug!("User info: {:?}", user_info);
     }
@@ -306,10 +306,7 @@ mod test {
         let largest = video.largest_video().await.unwrap().unwrap();
         let data = largest.download().await.unwrap();
         assert_eq!(Some(data.len() as u64), largest.size);
-        assert_eq!(
-            Some(format!("{:x}", md5::compute(data))),
-            largest.md5
-        );
+        assert_eq!(Some(format!("{:x}", md5::compute(data))), largest.md5);
 
         // Uses a Troop 27 photo, which has no video
         let photo = Image::from_id(client.clone(), "Mzf2k5x-0").await.unwrap();

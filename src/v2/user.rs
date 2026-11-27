@@ -5,8 +5,8 @@
  *  - MIT license <http://opensource.org/licenses/MIT>
  *  at your option.
  */
-use crate::v2::errors::SmugMugError;
 use crate::v2::deleted::{DeletedAlbumsResponse, DeletedFoldersResponse};
+use crate::v2::errors::SmugMugError;
 use crate::v2::macros::{obj_from_url, stream_children_from_url};
 use crate::v2::parsers::is_none_or_empty_str;
 use crate::v2::{API_ORIGIN, Client, DeletedAlbum, DeletedFolder, Node};

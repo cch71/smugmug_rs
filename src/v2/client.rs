@@ -8,7 +8,7 @@
 use crate::v2::errors::SmugMugError;
 use crate::v2::oauth::oauth1_authorization_header;
 use bytes::Bytes;
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use jiff::{SignedDuration, Timestamp};
 use num_enum::TryFromPrimitive;
 use reqwest::Response as ReqwestResponse;
 use reqwest::header::HeaderMap;
@@ -250,7 +250,7 @@ impl ClientRef {
     fn extract_rate_limits_from_response(&self, resp: &ReqwestResponse) -> Arc<RateLimitWindow> {
         // Extract the rate limits
         let rate_limit = Arc::new(RateLimitWindow::from_reqwest_headers(
-            Utc::now(),
+            Timestamp::now(),
             resp.headers(),
         ));
 
@@ -385,14 +385,14 @@ pub enum ApiErrorCodes {
 #[derive(Default, Clone)]
 pub struct RateLimitWindow {
     num_remaining_requests: Option<u64>,
-    current_window_reset_datetime: Option<DateTime<Utc>>,
+    current_window_reset_datetime: Option<Timestamp>,
     retry_after_seconds: Option<u64>,
-    timestamp: DateTime<Utc>,
+    timestamp: Timestamp,
 }
 
 impl RateLimitWindow {
     // Pull out the rate limit headers
-    fn from_reqwest_headers(timestamp: DateTime<Utc>, headers: &HeaderMap) -> Self {
+    fn from_reqwest_headers(timestamp: Timestamp, headers: &HeaderMap) -> Self {
         // Parse the headers fully per call since we are rate limited and taking time to parse
         // is potentially better than storing raw and performance of parsing on call.
         let retry_after_seconds = headers
@@ -407,7 +407,7 @@ impl RateLimitWindow {
             v.to_str().map_or(None, |v| {
                 v.parse::<i64>()
                     .ok()
-                    .and_then(|v| Utc.timestamp_opt(v, 0).latest())
+                    .and_then(|v| Timestamp::from_second(v).ok())
             })
         });
 
@@ -425,7 +425,7 @@ impl RateLimitWindow {
     }
 
     /// UTC Date/Time until current rate window ends
-    pub fn window_reset_datetime(&self) -> Option<DateTime<Utc>> {
+    pub fn window_reset_datetime(&self) -> Option<Timestamp> {
         self.current_window_reset_datetime
     }
 
@@ -442,13 +442,18 @@ impl RateLimitWindow {
 
     /// If the caller has used up the number of request allocated, then the time returned indicates
     /// when requests can be resumed
-    pub fn resume_after(&self) -> Option<DateTime<Utc>> {
+    pub fn resume_after(&self) -> Option<Timestamp> {
         self.retry_after_seconds
-            .map(|v| self.timestamp + Duration::seconds(v as i64))
+            .and_then(|v| i64::try_from(v).ok())
+            .and_then(|v| {
+                self.timestamp
+                    .checked_add(SignedDuration::from_secs(v))
+                    .ok()
+            })
     }
 
     /// Timestamp this was recorded
-    pub fn timestamp(&self) -> DateTime<Utc> {
+    pub fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
 }
@@ -627,7 +632,10 @@ mod tests {
             &[("_verbosity", "1"), ("_verbosity", "2")],
         )
         .unwrap();
-        assert_eq!(query(&url), vec![("_verbosity".to_string(), "1".to_string())]);
+        assert_eq!(
+            query(&url),
+            vec![("_verbosity".to_string(), "1".to_string())]
+        );
     }
 
     #[test]
