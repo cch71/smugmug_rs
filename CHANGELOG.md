@@ -6,6 +6,8 @@ workflow publishes it as the GitHub release notes for the version's tag.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-27
+
 - **Breaking:** replaced the unmaintained `chrono` crate with `jiff`. Every date/time field
   and method that returned `chrono::DateTime<Utc>` now returns `jiff::Timestamp`, and
   `jiff` is re-exported as `smugmug::jiff`. Dates are still saved as UTC RFC 3339 strings
