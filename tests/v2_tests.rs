@@ -6,6 +6,9 @@
  *  at your option.
  */
 
+// Live API tests on the native targets; tests/wasm.rs covers the browser (WASM) target
+#![cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+
 mod helpers;
 
 #[cfg(test)]

@@ -43,17 +43,25 @@ base64 = "0.23"
 rand = { version = "0.10" }
 urlencoding = "2.1"
 
-# rand needs getrandom's JavaScript backend to build for the browser (WASM) target
+# The browser (WASM) target has no clock or random source in `std`, so get them from JavaScript:
+# getrandom for rand, and jiff for `Timestamp::now()` (which panics there without `js`)
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.4", features = ["wasm_js"] }
+jiff = { version = "1", features = ["js"] }
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-test = "0.3"
 
 [dev-dependencies]
 dotenvy = "0.15"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 serde_json = "1"
 anyhow = "1"
 md5 = "0.8"
 env_logger = "0.11"
+
+# The live API tests and examples use a multi-threaded runtime, which tokio doesn't support on WASM
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dev-dependencies]
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 
 
 [build-dependencies]

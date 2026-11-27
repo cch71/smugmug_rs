@@ -31,6 +31,26 @@ jobs:
       - name: Run cargo test
         run: cargo test --all-features
 
+  # Runs tests/wasm.rs in Node on the browser target, where `std` has no clock or random source.
+  # Building alone isn't enough: a missing JavaScript backend only fails at runtime.
+  wasm_test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Add the WASM target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
+        with:
+          tool: wasm-pack
+      - name: Run WASM tests
+        run: wasm-pack test --node -- --test wasm
+
   clippy_check:
     runs-on: ubuntu-latest
     permissions:
